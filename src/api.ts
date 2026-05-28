@@ -7,15 +7,27 @@ export interface LoginResponse {
   steamId?: string;
   error?: string;
   message?: string;
+  level?: number;
+  balance?: number;
+  inventoryValue?: number;
+  friendsCount?: number;
+  avatarUrl?: string;
+  displayName?: string;
+  tradeBan?: boolean;
+  vacBan?: boolean;
+  limited?: boolean;
 }
 
 export interface FriendData {
   steamId: string;
   name: string;
   avatar: string;
+  avatarUrl?: string;
   personaState: number;
   gameId?: string;
   gameName?: string;
+  inventoryValue?: number;
+  hasMessages?: boolean;
 }
 
 export interface MessageData {
@@ -25,13 +37,13 @@ export interface MessageData {
   friendId: string;
   friendName: string;
   friendAvatar: string;
+  friendAvatarUrl?: string;
   text: string;
   timestamp: string;
   isOutgoing: boolean;
 }
 
 export const steamApi = {
-  // Login to Steam
   async login(accountId: string, login: string, password: string, sharedSecret?: string, identitySecret?: string): Promise<LoginResponse> {
     try {
       const res = await fetch(`${API_BASE}/login`, {
@@ -40,12 +52,11 @@ export const steamApi = {
         body: JSON.stringify({ accountId, login, password, sharedSecret, identitySecret }),
       });
       return await res.json();
-    } catch (err) {
+    } catch {
       return { error: 'Сервер недоступен' };
     }
   },
 
-  // Logout from Steam
   async logout(accountId: string): Promise<void> {
     try {
       await fetch(`${API_BASE}/logout`, {
@@ -53,10 +64,9 @@ export const steamApi = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountId }),
       });
-    } catch {}
+    } catch { /* ignore */ }
   },
 
-  // Get account status
   async getStatus(accountId: string): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/status/${accountId}`);
@@ -66,7 +76,6 @@ export const steamApi = {
     }
   },
 
-  // Get all accounts status
   async getAllStatuses(): Promise<Record<string, any>> {
     try {
       const res = await fetch(`${API_BASE}/status-all`);
@@ -76,7 +85,6 @@ export const steamApi = {
     }
   },
 
-  // Get friends list
   async getFriends(accountId: string): Promise<FriendData[]> {
     try {
       const res = await fetch(`${API_BASE}/friends/${accountId}`);
@@ -87,7 +95,6 @@ export const steamApi = {
     }
   },
 
-  // Send message
   async sendMessage(accountId: string, friendSteamId: string, message: string): Promise<boolean> {
     try {
       const res = await fetch(`${API_BASE}/message`, {
@@ -102,7 +109,6 @@ export const steamApi = {
     }
   },
 
-  // Get new messages
   async getMessages(): Promise<MessageData[]> {
     try {
       const res = await fetch(`${API_BASE}/messages`);
@@ -113,7 +119,6 @@ export const steamApi = {
     }
   },
 
-  // Generate Guard code
   async getGuardCode(sharedSecret: string): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/guard-code`, {
@@ -127,7 +132,6 @@ export const steamApi = {
     }
   },
 
-  // Open browser session for account
   async openBrowser(accountId: string, url: string): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/browser/open`, {
@@ -141,7 +145,6 @@ export const steamApi = {
     }
   },
 
-  // Navigate browser
   async navigateBrowser(accountId: string, url: string): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/browser/navigate`, {
@@ -155,7 +158,6 @@ export const steamApi = {
     }
   },
 
-  // Get browser screenshot
   async getBrowserScreenshot(accountId: string): Promise<string | null> {
     try {
       const res = await fetch(`${API_BASE}/browser/screenshot/${accountId}`);
@@ -166,7 +168,15 @@ export const steamApi = {
     }
   },
 
-  // Close browser
+  async getBrowserPage(accountId: string): Promise<any> {
+    try {
+      const res = await fetch(`${API_BASE}/browser/page/${accountId}`);
+      return await res.json();
+    } catch {
+      return { error: 'Network error' };
+    }
+  },
+
   async closeBrowser(accountId: string): Promise<void> {
     try {
       await fetch(`${API_BASE}/browser/close`, {
@@ -174,41 +184,15 @@ export const steamApi = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountId }),
       });
-    } catch {}
+    } catch { /* ignore */ }
   },
 
-  // VPS info
   async getVpsInfo(): Promise<any> {
     try {
       const res = await fetch('/api/vps/info');
       return await res.json();
     } catch {
       return null;
-    }
-  },
-
-  // VPS actions
-  async vpsAction(action: string): Promise<any> {
-    try {
-      const res = await fetch('/api/vps/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-      return await res.json();
-    } catch {
-      return { error: 'Network error' };
-    }
-  },
-
-  // Domain management
-  async getDomains(): Promise<any[]> {
-    try {
-      const res = await fetch('/api/domains');
-      const data = await res.json();
-      return data.domains || [];
-    } catch {
-      return [];
     }
   },
 
@@ -227,8 +211,20 @@ export const steamApi = {
 
   async removeDomain(domainId: string): Promise<any> {
     try {
-      const res = await fetch(`/api/domains/${domainId}`, {
-        method: 'DELETE',
+      const res = await fetch(`/api/domains/${domainId}`, { method: 'DELETE' });
+      return await res.json();
+    } catch {
+      return { error: 'Network error' };
+    }
+  },
+
+  // Spam to users with no messages
+  async spamNoMessages(accountId: string, message: string): Promise<any> {
+    try {
+      const res = await fetch(`${API_BASE}/spam-no-messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, message }),
       });
       return await res.json();
     } catch {
@@ -236,14 +232,18 @@ export const steamApi = {
     }
   },
 
-  async renewSsl(domainId: string): Promise<any> {
+  // Translate text
+  async translate(text: string, targetLang: string): Promise<string> {
     try {
-      const res = await fetch(`/api/domains/${domainId}/renew-ssl`, {
+      const res = await fetch(`/api/translate`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, targetLang }),
       });
-      return await res.json();
+      const data = await res.json();
+      return data.translatedText || text;
     } catch {
-      return { error: 'Network error' };
+      return text;
     }
   },
 };

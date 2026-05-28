@@ -1,98 +1,82 @@
 import { useState } from 'react';
-import { Lock, User, AlertCircle, Loader2 } from 'lucide-react';
+import { Lock, User, Eye, EyeOff } from 'lucide-react';
+import { useAppStore } from '../store';
 
-interface LoginPageProps {
-  onLogin: (username: string, password: string) => Promise<boolean>;
-}
-
-export default function LoginPage({ onLogin }: LoginPageProps) {
+export default function LoginPage() {
+  const { login } = useAppStore();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
-    const success = await onLogin(username, password);
-    
-    if (!success) {
-      setError('Неверный логин или пароль');
-    }
-    
+    const success = await login(username, password);
     setLoading(false);
+    if (!success) setError('Неверный логин или пароль');
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0f] p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500/80 to-purple-600/80 flex items-center justify-center text-3xl font-bold text-white mx-auto mb-4 shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mx-auto mb-4 text-white font-bold text-xl">
             ST
           </div>
-          <h1 className="text-2xl font-semibold text-white">SukaCombine</h1>
-          <p className="text-sm text-white/40 mt-1">Suka Team Panel</p>
+          <h1 className="text-2xl font-bold text-white">SukaCombine</h1>
+          <p className="text-sm text-white/40 mt-1">Steam Panel v2.0</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="glass-card rounded-3xl p-6 space-y-5">
+        <form onSubmit={handleLogin} className="glass-card rounded-2xl p-6 space-y-4">
           <div>
-            <label className="text-xs text-white/50 block mb-2">Логин</label>
+            <label className="text-xs text-white/50 mb-1 block">Логин</label>
             <div className="relative">
-              <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
+              <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
               <input
                 type="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                placeholder="Введите логин"
-                className="w-full glass-input text-white pl-11 pr-4 py-3 rounded-xl outline-none"
-                required
+                className="w-full glass-input text-sm text-white pl-10 pr-4 py-3 rounded-xl outline-none"
+                placeholder="admin"
+                autoFocus
               />
             </div>
           </div>
 
           <div>
-            <label className="text-xs text-white/50 block mb-2">Пароль</label>
+            <label className="text-xs text-white/50 mb-1 block">Пароль</label>
             <div className="relative">
-              <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
+              <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Введите пароль"
-                className="w-full glass-input text-white pl-11 pr-4 py-3 rounded-xl outline-none"
-                required
+                className="w-full glass-input text-sm text-white pl-10 pr-10 py-3 rounded-xl outline-none"
+                placeholder="••••••••"
               />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60">
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 text-red-400 text-xs p-3 rounded-xl glass border border-red-500/30">
-              <AlertCircle size={14} />
-              {error}
-            </div>
+            <div className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{error}</div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl glass-accent text-white font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            {loading ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Вход...
-              </>
-            ) : (
-              'Войти'
-            )}
+            {loading ? 'Вход...' : 'Войти'}
           </button>
         </form>
 
-        <p className="text-center text-xs text-white/30 mt-6">
-          Доступ только для членов команды
-        </p>
+        <p className="text-center text-[10px] text-white/20 mt-6">© Suka Team 2024</p>
       </div>
     </div>
   );

@@ -18,8 +18,8 @@ export default function Dashboard({ accounts, offers }: DashboardProps) {
     { label: 'Аккаунты', value: accounts.length, icon: <Users size={20} />, color: 'from-blue-500/20 to-blue-600/10' },
     { label: 'Онлайн', value: onlineCount, icon: <Wifi size={20} />, color: 'from-green-500/20 to-green-600/10' },
     { label: 'В игре', value: inGameCount, icon: <Gamepad2 size={20} />, color: 'from-purple-500/20 to-purple-600/10' },
-    { label: 'Баланс', value: `₽${totalBalance.toFixed(0)}`, icon: <Wallet size={20} />, color: 'from-emerald-500/20 to-emerald-600/10' },
-    { label: 'Инвентарь', value: `₽${totalInvValue.toFixed(0)}`, icon: <Package size={20} />, color: 'from-violet-500/20 to-violet-600/10' },
+    { label: 'Баланс', value: `$${totalBalance.toFixed(2)}`, icon: <Wallet size={20} />, color: 'from-emerald-500/20 to-emerald-600/10' },
+    { label: 'Инвентарь', value: `$${totalInvValue.toFixed(2)}`, icon: <Package size={20} />, color: 'from-violet-500/20 to-violet-600/10' },
     { label: 'Друзей', value: totalFriends, icon: <UserPlus size={20} />, color: 'from-orange-500/20 to-orange-600/10' },
     { label: 'Офферы', value: pendingOffers, icon: <ArrowRightLeft size={20} />, color: 'from-yellow-500/20 to-yellow-600/10' },
     { label: 'Guard', value: accounts.filter(a => a.guardEnabled).length, icon: <Shield size={20} />, color: 'from-cyan-500/20 to-cyan-600/10' },
@@ -63,6 +63,8 @@ export default function Dashboard({ accounts, offers }: DashboardProps) {
                   <th className="text-left py-2 px-4">Статус</th>
                   <th className="text-left py-2 px-4">Уровень</th>
                   <th className="text-left py-2 px-4">Баланс</th>
+                  <th className="text-left py-2 px-4">Инвентарь</th>
+                  <th className="text-left py-2 px-4">Друзей</th>
                   <th className="text-left py-2 px-4">Сервер</th>
                   <th className="text-left py-2 px-4">Guard</th>
                   <th className="text-left py-2 px-4">Состояние</th>
@@ -73,8 +75,17 @@ export default function Dashboard({ accounts, offers }: DashboardProps) {
                   <tr key={acc.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                     <td className="py-2.5 px-4">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg">{acc.avatar}</span>
-                        <span className="text-sm text-white">{acc.login}</span>
+                        {acc.avatarUrl ? (
+                          <img src={acc.avatarUrl} alt="" className="w-6 h-6 rounded-full" />
+                        ) : (
+                          <span className="text-lg">{acc.avatar}</span>
+                        )}
+                        <div>
+                          <span className="text-sm text-white">{acc.displayName || acc.login}</span>
+                          {acc.steamId && (
+                            <div className="text-[10px] text-white/30">{acc.steamId}</div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="py-2.5 px-4">
@@ -92,10 +103,12 @@ export default function Dashboard({ accounts, offers }: DashboardProps) {
                          'Оффлайн'}
                       </span>
                     </td>
-                    <td className="py-2.5 px-4 text-sm text-white/70">{acc.level}</td>
-                    <td className="py-2.5 px-4 text-sm text-white/70">₽{acc.balance.toFixed(2)}</td>
+                    <td className="py-2.5 px-4 text-sm text-white">{acc.level}</td>
+                    <td className="py-2.5 px-4 text-sm text-white">${acc.balance.toFixed(2)}</td>
+                    <td className="py-2.5 px-4 text-sm text-white">${acc.inventoryValue.toFixed(2)}</td>
+                    <td className="py-2.5 px-4 text-sm text-white">{acc.friendsCount}</td>
                     <td className="py-2.5 px-4">
-                      <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-400">
+                      <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-400">
                         {acc.server}
                       </span>
                     </td>
@@ -103,7 +116,7 @@ export default function Dashboard({ accounts, offers }: DashboardProps) {
                       {acc.guardEnabled ? (
                         <CheckCircle size={16} className="text-green-400" />
                       ) : (
-                        <XCircle size={16} className="text-red-400" />
+                        <XCircle size={16} className="text-red-400/50" />
                       )}
                     </td>
                     <td className="py-2.5 px-4">
@@ -125,22 +138,22 @@ export default function Dashboard({ accounts, offers }: DashboardProps) {
       )}
 
       {/* Bottom row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Recent offers */}
         <div className="glass-card rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-white">
+          <div className="flex items-center gap-2 text-sm font-semibold text-white mb-3">
             <ArrowRightLeft size={16} />
             Последние офферы
           </div>
           {offers.length > 0 ? (
             <div className="space-y-2">
               {offers.slice(0, 4).map(o => (
-                <div key={o.id} className="flex items-center justify-between p-2 rounded-lg glass-light">
+                <div key={o.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                   <div className="flex items-center gap-2">
-                    <span>{o.partnerAvatar}</span>
+                    <span className="text-lg">{o.partnerAvatar}</span>
                     <div>
-                      <div className="text-xs text-white">{o.partnerName}</div>
-                      <div className="text-[10px] text-white/40">
+                      <span className="text-xs text-white">{o.partnerName}</span>
+                      <div className="text-[10px] text-white/30">
                         {o.itemsGive.length} → {o.itemsReceive.length} предметов
                       </div>
                     </div>
@@ -156,36 +169,36 @@ export default function Dashboard({ accounts, offers }: DashboardProps) {
               ))}
             </div>
           ) : (
-            <div className="text-center py-4 text-white/30 text-xs">Нет офферов</div>
+            <div className="text-xs text-white/30 text-center py-4">Нет офферов</div>
           )}
         </div>
 
         {/* Warnings */}
         <div className="glass-card rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-white">
+          <div className="flex items-center gap-2 text-sm font-semibold text-white mb-3">
             <AlertTriangle size={16} />
             Предупреждения
           </div>
           <div className="space-y-2">
             {accounts.filter(a => a.tradeBan || a.vacBan || a.limited || a.status === 'error').length > 0 ? (
               accounts.filter(a => a.tradeBan || a.vacBan || a.limited || a.status === 'error').map(a => (
-                <div key={a.id} className="flex items-center gap-2 p-2 rounded-lg glass-light">
-                  <span>{a.avatar}</span>
+                <div key={a.id} className="flex items-center gap-2 py-1.5">
+                  <span className="text-lg">{a.avatar}</span>
                   <div>
-                    <div className="text-xs text-white">{a.login}</div>
-                    <div className="text-[10px] text-red-400">
+                    <span className="text-xs text-white">{a.login}</span>
+                    <div className="text-[10px] text-red-400/70">
                       {a.errorMessage || [a.tradeBan && 'Trade Ban', a.vacBan && 'VAC Ban', a.limited && 'Limited'].filter(Boolean).join(', ')}
                     </div>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-center py-2 text-green-400/60 text-xs">Все аккаунты в порядке ✨</div>
+              <div className="text-xs text-white/30 text-center py-4">Все аккаунты в порядке ✨</div>
             )}
             {accounts.filter(a => !a.guardEnabled).length > 0 && (
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                <Lock size={14} className="text-yellow-400" />
-                <span className="text-xs text-yellow-400">
+              <div className="flex items-center gap-2 mt-2 text-yellow-400/70">
+                <Lock size={12} />
+                <span className="text-[10px]">
                   {accounts.filter(a => !a.guardEnabled).length} аккаунтов без Guard
                 </span>
               </div>

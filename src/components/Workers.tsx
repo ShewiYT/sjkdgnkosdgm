@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { UserCog, Plus, Trash2, Clock, MessageSquare, Globe, ArrowRightLeft, Shield, Gamepad2, CheckCircle, ChevronDown, ChevronUp, Package } from 'lucide-react';
+import { Users, Plus, Trash2, Save, X } from 'lucide-react';
 import { useAppStore } from '../store';
 import type { SteamAccount } from '../types';
 
@@ -8,244 +8,120 @@ interface WorkersProps {
 }
 
 export default function Workers({ accounts }: WorkersProps) {
-  const { workers, addWorker, updateWorker, removeWorker } = useAppStore();
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newWorker, setNewWorker] = useState({ username: '', password: '', assignedAccounts: [] as string[] });
-  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
+  const { workers, addWorker, removeWorker } = useAppStore();
+  const [showCreate, setShowCreate] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
 
-  const permLabels = [
-    { key: 'chat' as const, icon: <MessageSquare size={10} />, label: 'Chat' },
-    { key: 'browser' as const, icon: <Globe size={10} />, label: 'Browser' },
-    { key: 'offersSend' as const, icon: <ArrowRightLeft size={10} />, label: 'Offers' },
-    { key: 'offersSendAll' as const, icon: <Package size={10} />, label: 'Offers All' },
-    { key: 'offersConfirm' as const, icon: <CheckCircle size={10} />, label: 'Confirm' },
-    { key: 'guard' as const, icon: <Shield size={10} />, label: 'Guard' },
-    { key: 'inGameMode' as const, icon: <Gamepad2 size={10} />, label: 'In-Game' },
-  ];
-
-  const formatTime = (iso: string) => {
-    const d = new Date(iso);
-    const now = Date.now();
-    const diff = Math.floor((now - d.getTime()) / 60000);
-    if (diff < 1) return 'только что';
-    if (diff < 60) return `${diff} мин назад`;
-    return `${Math.floor(diff / 60)} ч назад`;
+  const handleCreate = () => {
+    if (!newUsername.trim() || !newPassword.trim()) return;
+    addWorker({ username: newUsername, password: newPassword, assignedAccounts: selectedAccounts });
+    setNewUsername('');
+    setNewPassword('');
+    setSelectedAccounts([]);
+    setShowCreate(false);
   };
 
-  const handleCreateWorker = () => {
-    if (!newWorker.username || !newWorker.password) return;
-    addWorker({
-      username: newWorker.username,
-      password: newWorker.password,
-      assignedAccounts: newWorker.assignedAccounts,
-    });
-    setNewWorker({ username: '', password: '', assignedAccounts: [] });
-    setShowAddModal(false);
-  };
-
-  const toggleAccountAssignment = (workerId: string, accountId: string, currentAssigned: string[]) => {
-    const newAssigned = currentAssigned.includes(accountId)
-      ? currentAssigned.filter(id => id !== accountId)
-      : [...currentAssigned, accountId];
-    updateWorker(workerId, { assignedAccounts: newAssigned });
+  const toggleAccount = (accId: string) => {
+    setSelectedAccounts(prev => prev.includes(accId) ? prev.filter(id => id !== accId) : [...prev, accId]);
   };
 
   return (
     <div className="p-6 space-y-6 animate-fade-in overflow-y-auto max-h-[calc(100vh-52px)]">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-white flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl glass-accent flex items-center justify-center">
-              <UserCog size={20} />
-            </div>
+          <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
+            <Users size={24} />
             Работники
           </h1>
-          <p className="text-sm text-white/50 mt-1">Управление доступом к аккаунтам</p>
+          <p className="text-sm text-white/40 mt-1">Управление воркерами</p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl glass-accent text-white text-sm"
+          onClick={() => setShowCreate(!showCreate)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-400 text-sm hover:bg-indigo-500/30 transition-colors"
         >
           <Plus size={16} />
-          Добавить работника
+          Создать
         </button>
       </div>
 
-      {/* Add Worker Modal */}
-      {showAddModal && (
-        <div className="glass-card rounded-2xl p-5 space-y-4 animate-fade-in">
-          <h3 className="text-sm font-semibold text-white">➕ Новый работник</h3>
-          <div className="grid grid-cols-2 gap-4">
+      {showCreate && (
+        <div className="glass-card rounded-2xl p-4 space-y-4">
+          <h3 className="text-sm font-semibold text-white">Новый работник</h3>
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-white/50 block mb-1">Логин</label>
-              <input
-                value={newWorker.username}
-                onChange={e => setNewWorker(prev => ({ ...prev, username: e.target.value }))}
-                placeholder="worker_name"
-                className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none"
-              />
+              <label className="text-xs text-white/50 mb-1 block">Логин</label>
+              <input value={newUsername} onChange={e => setNewUsername(e.target.value)} className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none" placeholder="worker1" />
             </div>
             <div>
-              <label className="text-xs text-white/50 block mb-1">Пароль</label>
-              <input
-                value={newWorker.password}
-                onChange={e => setNewWorker(prev => ({ ...prev, password: e.target.value }))}
-                placeholder="••••••••"
-                className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none"
-              />
+              <label className="text-xs text-white/50 mb-1 block">Пароль</label>
+              <input value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none" placeholder="••••••" />
             </div>
           </div>
+
           <div>
-            <label className="text-xs text-white/50 block mb-1">Назначить аккаунты</label>
-            <div className="flex flex-wrap gap-1">
+            <label className="text-xs text-white/50 mb-2 block">Назначенные аккаунты</label>
+            <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
               {accounts.map(acc => (
                 <button
                   key={acc.id}
-                  onClick={() => {
-                    setNewWorker(prev => ({
-                      ...prev,
-                      assignedAccounts: prev.assignedAccounts.includes(acc.id)
-                        ? prev.assignedAccounts.filter(id => id !== acc.id)
-                        : [...prev.assignedAccounts, acc.id]
-                    }));
-                  }}
-                  className={`px-2 py-1 rounded-lg text-[10px] ${
-                    newWorker.assignedAccounts.includes(acc.id)
-                      ? 'glass-accent text-white'
-                      : 'glass-button text-white/50'
+                  onClick={() => toggleAccount(acc.id)}
+                  className={`px-2 py-1 rounded-lg text-xs transition-colors ${
+                    selectedAccounts.includes(acc.id) ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 text-white/40'
                   }`}
                 >
-                  {acc.avatar} {acc.login}
+                  {acc.login}
                 </button>
               ))}
             </div>
           </div>
-          <div className="flex gap-3">
-            <button onClick={() => setShowAddModal(false)} className="flex-1 py-2 rounded-xl glass-button text-white/60 text-sm">
-              Отмена
+
+          <div className="flex gap-2">
+            <button onClick={handleCreate} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-green-500/20 text-green-400 text-xs hover:bg-green-500/30">
+              <Save size={12} /> Создать
             </button>
-            <button onClick={handleCreateWorker} className="flex-1 py-2 rounded-xl glass-accent text-white text-sm">
-              Создать
+            <button onClick={() => setShowCreate(false)} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-white/5 text-white/50 text-xs hover:bg-white/10">
+              <X size={12} /> Отмена
             </button>
           </div>
         </div>
       )}
 
-      {/* Workers list */}
-      {workers.length === 0 ? (
-        <div className="text-center py-16 text-white/30">
-          <UserCog size={48} className="mx-auto mb-4 opacity-30" />
-          <div className="text-sm">Нет работников</div>
-          <div className="text-xs mt-1">Нажмите "Добавить работника"</div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {workers.map(worker => (
-            <div key={worker.id} className="glass-card rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl glass-accent flex items-center justify-center text-sm font-bold">
-                    {worker.username[0]?.toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-white">{worker.username}</div>
-                    <div className="text-[10px] text-white/40 flex items-center gap-2">
-                      <Clock size={10} />
-                      Был {formatTime(worker.lastActive)}
-                      •
-                      {worker.assignedAccounts.length} аккаунтов
-                    </div>
+      <div className="space-y-3">
+        {workers.length === 0 ? (
+          <div className="glass-card rounded-2xl p-12 text-center">
+            <Users size={48} className="mx-auto mb-4 text-white/10" />
+            <div className="text-sm text-white/30">Нет работников</div>
+          </div>
+        ) : (
+          workers.map(worker => (
+            <div key={worker.id} className="glass-card rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <div className="text-sm text-white font-medium">{worker.username}</div>
+                  <div className="text-[10px] text-white/30">
+                    {worker.assignedAccounts.length} аккаунтов • Последняя активность: {new Date(worker.lastActive).toLocaleString('ru')}
                   </div>
                 </div>
-
-                {/* Permissions badges */}
                 <div className="flex gap-1">
-                  {permLabels.map(p => (
-                    <button
-                      key={p.key}
-                      onClick={() => {
-                        updateWorker(worker.id, {
-                          permissions: { ...worker.permissions, [p.key]: !worker.permissions[p.key] }
-                        });
-                      }}
-                      className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] ${
-                        worker.permissions[p.key]
-                          ? 'bg-green-500/20 text-green-400'
-                          : 'bg-white/5 text-white/30'
-                      }`}
-                    >
-                      {p.icon} {p.label}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  onClick={() => removeWorker(worker.id)}
-                  className="p-2 rounded-xl glass-button text-red-400/50 hover:text-red-400"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-
-              {/* Assigned accounts */}
-              <div>
-                <div className="text-xs text-white/50 mb-2">Назначенные аккаунты:</div>
-                <div className="flex flex-wrap gap-1">
-                  {accounts.map(acc => (
-                    <button
-                      key={acc.id}
-                      onClick={() => toggleAccountAssignment(worker.id, acc.id, worker.assignedAccounts)}
-                      className={`px-2 py-1 rounded-lg text-[10px] ${
-                        worker.assignedAccounts.includes(acc.id)
-                          ? 'glass-accent text-white'
-                          : 'glass-button text-white/30'
-                      }`}
-                    >
-                      {acc.avatar} {acc.login}
-                    </button>
-                  ))}
+                  <button onClick={() => removeWorker(worker.id)} className="p-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-500/10">
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
-
-              {/* Action log toggle */}
-              <button
-                onClick={() => {
-                  const newSet = new Set(expandedLogs);
-                  if (newSet.has(worker.id)) newSet.delete(worker.id);
-                  else newSet.add(worker.id);
-                  setExpandedLogs(newSet);
-                }}
-                className="text-xs text-white/40 hover:text-white/60 flex items-center gap-1"
-              >
-                {expandedLogs.has(worker.id) ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                📋 Лог действий ({worker.actionsLog.length})
-              </button>
-
-              {expandedLogs.has(worker.id) && (
-                <div className="glass-light rounded-xl p-3">
-                  {worker.actionsLog.length === 0 ? (
-                    <div className="text-xs text-white/30 text-center">Нет действий</div>
-                  ) : (
-                    <div className="space-y-1">
-                      {worker.actionsLog.map(action => {
-                        const actAcc = accounts.find(a => a.id === action.accountId);
-                        return (
-                          <div key={action.id} className="flex items-center gap-3 text-[10px] text-white/50">
-                            <span>{formatTime(action.timestamp)}</span>
-                            <span className="text-blue-400">{actAcc?.login}</span>
-                            <span className="text-white/70">{action.action}</span>
-                            <span>{action.details}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="flex flex-wrap gap-1">
+                {worker.assignedAccounts.map(accId => {
+                  const acc = accounts.find(a => a.id === accId);
+                  return acc ? (
+                    <span key={accId} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/50">{acc.login}</span>
+                  ) : null;
+                })}
+              </div>
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
     </div>
   );
 }

@@ -9,30 +9,24 @@ import Spammer from './components/Spammer';
 import FriendsManager from './components/FriendsManager';
 import SDAGuard from './components/SDAGuard';
 import SecurityView from './components/SecurityView';
-import InGame from './components/InGame';
-import LevelUpper from './components/LevelUpper';
 import Workers from './components/Workers';
 import SettingsView from './components/SettingsView';
 import ImportAccounts from './components/ImportAccounts';
 import LoginPage from './components/LoginPage';
 import DomainsView from './components/DomainsView';
+import NotificationsView from './components/NotificationsView';
+import SteamIdParser from './components/SteamIdParser';
 import { useAppStore } from './store';
 import type { ActiveView, SteamAccount } from './types';
 
 export default function App() {
-  const {
-    currentUser, login, logout, getVisibleAccounts, tradeOffers,
-    connectAll, disconnectAll, refreshStatuses
-  } = useAppStore();
-
+  const { currentUser, logout, getVisibleAccounts, tradeOffers, connectAll, disconnectAll, refreshStatuses } = useAppStore();
   const [activeView, setActiveView] = useState<ActiveView>('import');
   const [selectedAccount, setSelectedAccount] = useState<SteamAccount | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Get accounts visible to current user
   const accounts = getVisibleAccounts();
 
-  // Refresh statuses on mount
   useEffect(() => {
     if (!currentUser) return;
     refreshStatuses();
@@ -40,16 +34,15 @@ export default function App() {
     return () => clearInterval(interval);
   }, [currentUser, refreshStatuses]);
 
-  // Show login if not authenticated
   if (!currentUser) {
-    return <LoginPage onLogin={login} />;
+    return <LoginPage />;
   }
 
   const isAdmin = currentUser.role === 'admin';
   const onlineCount = accounts.filter(a => a.status === 'online' || a.status === 'in-game').length;
 
   const handleConnectAll = () => {
-    if (onlineCount === accounts.length) {
+    if (onlineCount === accounts.length && accounts.length > 0) {
       disconnectAll();
     } else {
       connectAll();
@@ -65,25 +58,25 @@ export default function App() {
       case 'multichat':
         return <MultiChat accounts={accounts} />;
       case 'browser':
-        return <BrowserView accounts={accounts} />;
+        return <BrowserView accounts={accounts} selectedAccount={selectedAccount} />;
       case 'offers':
         return <Offers accounts={accounts} offers={tradeOffers} />;
       case 'spammer':
-        return <Spammer />;
+        return <Spammer accounts={accounts} />;
       case 'friends':
-        return <FriendsManager />;
+        return <FriendsManager accounts={accounts} />;
+      case 'parser':
+        return <SteamIdParser />;
       case 'sda':
         return <SDAGuard accounts={accounts} />;
       case 'guard':
         return <SecurityView accounts={accounts} />;
-      case 'ingame':
-        return <InGame accounts={accounts} />;
-      case 'levelup':
-        return <LevelUpper accounts={accounts} />;
+      case 'notifications':
+        return <NotificationsView />;
       case 'domains':
-        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/50">Нет доступа</div>;
+        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/30">Нет доступа</div>;
       case 'workers':
-        return isAdmin ? <Workers accounts={accounts} /> : <div className="p-6 text-white/50">Нет доступа</div>;
+        return isAdmin ? <Workers accounts={accounts} /> : <div className="p-6 text-white/30">Нет доступа</div>;
       case 'settings':
         return <SettingsView />;
       default:
@@ -92,7 +85,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen bg-[#0a0a0f]">
       <Sidebar
         activeView={activeView}
         setActiveView={setActiveView}
@@ -102,12 +95,13 @@ export default function App() {
         onLogout={logout}
         username={currentUser.username}
       />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden">
         <AccountBar
           accounts={accounts}
           selectedAccount={selectedAccount}
           onSelectAccount={setSelectedAccount}
           onConnectAll={handleConnectAll}
+          onlineCount={onlineCount}
         />
         <div className="flex-1 overflow-hidden">
           {renderView()}

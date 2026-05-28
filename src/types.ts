@@ -12,6 +12,7 @@ export interface SteamAccount {
   password: string;
   maFile?: MaFile;
   avatar: string;
+  avatarUrl?: string;
   displayName: string;
   steamId?: string;
   level: number;
@@ -56,6 +57,7 @@ export interface Friend {
   id: string;
   name: string;
   avatar: string;
+  avatarUrl?: string;
   status: 'online' | 'offline' | 'in-game' | 'away';
   game?: string;
   lastOnline: string;
@@ -77,7 +79,9 @@ export interface ChatMessage {
   friendId: string;
   friendName: string;
   friendAvatar: string;
+  friendAvatarUrl?: string;
   text: string;
+  translatedText?: string;
   timestamp: string;
   isOutgoing: boolean;
 }
@@ -123,7 +127,6 @@ export interface WorkerPermissions {
   offersSendAll: boolean;
   offersConfirm: boolean;
   guard: boolean;
-  inGameMode: boolean;
 }
 
 export interface WorkerAction {
@@ -160,4 +163,18 @@ export interface DomainConfig {
   createdAt: string;
 }
 
-export type ActiveView = 'dashboard' | 'multichat' | 'browser' | 'offers' | 'spammer' | 'friends' | 'guard' | 'ingame' | 'levelup' | 'workers' | 'settings' | 'sda' | 'import' | 'domains';
+export interface NotificationSettings {
+  telegramBotToken: string;
+  telegramAdminId: string;
+  discordWebhookUrl: string;
+  enableTelegram: boolean;
+  enableDiscord: boolean;
+  notifyAccountsLoaded: boolean;
+  notifyNewMessage: boolean;
+  notifyFriendsStart: boolean;
+  notifyFriendsEnd: boolean;
+  notifyErrors: boolean;
+  notifyLogin: boolean;
+}
+
+export type ActiveView = 'dashboard' | 'multichat' | 'browser' | 'offers' | 'spammer' | 'friends' | 'guard' | 'workers' | 'settings' | 'sda' | 'import' | 'domains' | 'notifications' | 'parser';
