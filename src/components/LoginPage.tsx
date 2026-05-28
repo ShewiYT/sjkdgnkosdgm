@@ -28,7 +28,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500/80 to-purple-600/80 flex items-center justify-center text-3xl font-bold text-white mx-auto mb-4 shadow-2xl">
             ST
@@ -37,7 +36,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           <p className="text-sm text-white/40 mt-1">Suka Team Panel</p>
         </div>
 
-        {/* Login form */}
         <form onSubmit={handleSubmit} className="glass-card rounded-3xl p-6 space-y-5">
           <div>
             <label className="text-xs text-white/50 block mb-2">Логин</label>

@@ -2,7 +2,7 @@ export interface User {
   id: string;
   username: string;
   role: 'admin' | 'worker';
-  assignedAccounts: string[]; // IDs аккаунтов для воркеров
+  assignedAccounts: string[];
   createdAt: string;
 }
 
@@ -26,7 +26,7 @@ export interface SteamAccount {
   friendsCount: number;
   inventoryValue: number;
   errorMessage?: string;
-  ownerId?: string; // ID воркера/админа которому принадлежит
+  ownerId?: string;
 }
 
 export interface MaFile {
@@ -149,4 +149,15 @@ export interface MultiChatSettings {
   loadInterval: number;
 }
 
-export type ActiveView = 'dashboard' | 'multichat' | 'browser' | 'offers' | 'spammer' | 'friends' | 'guard' | 'ingame' | 'levelup' | 'workers' | 'settings' | 'sda' | 'import';
+export interface DomainConfig {
+  id: string;
+  domain: string;
+  target: 'panel' | 'api';
+  ssl: boolean;
+  sslExpiry?: string;
+  status: 'active' | 'pending' | 'error';
+  errorMessage?: string;
+  createdAt: string;
+}
+
+export type ActiveView = 'dashboard' | 'multichat' | 'browser' | 'offers' | 'spammer' | 'friends' | 'guard' | 'ingame' | 'levelup' | 'workers' | 'settings' | 'sda' | 'import' | 'domains';

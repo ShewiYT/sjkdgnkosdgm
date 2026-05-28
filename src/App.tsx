@@ -15,21 +15,16 @@ import Workers from './components/Workers';
 import SettingsView from './components/SettingsView';
 import ImportAccounts from './components/ImportAccounts';
 import LoginPage from './components/LoginPage';
+import DomainsView from './components/DomainsView';
 import { useAppStore } from './store';
 import type { ActiveView, SteamAccount } from './types';
 
 export default function App() {
-  const { 
-    currentUser, 
-    login, 
-    logout,
-    getVisibleAccounts, 
-    tradeOffers, 
-    connectAll, 
-    disconnectAll, 
-    refreshStatuses 
+  const {
+    currentUser, login, logout, getVisibleAccounts, tradeOffers,
+    connectAll, disconnectAll, refreshStatuses
   } = useAppStore();
-  
+
   const [activeView, setActiveView] = useState<ActiveView>('import');
   const [selectedAccount, setSelectedAccount] = useState<SteamAccount | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -68,13 +63,13 @@ export default function App() {
       case 'dashboard':
         return <Dashboard accounts={accounts} offers={tradeOffers} />;
       case 'multichat':
-        return <MultiChat />;
+        return <MultiChat accounts={accounts} />;
       case 'browser':
         return <BrowserView accounts={accounts} />;
       case 'offers':
-        return <Offers offers={tradeOffers} accounts={accounts} />;
+        return <Offers accounts={accounts} offers={tradeOffers} />;
       case 'spammer':
-        return <Spammer accounts={accounts} />;
+        return <Spammer />;
       case 'friends':
         return <FriendsManager />;
       case 'sda':
@@ -85,13 +80,14 @@ export default function App() {
         return <InGame accounts={accounts} />;
       case 'levelup':
         return <LevelUpper accounts={accounts} />;
+      case 'domains':
+        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/50">Нет доступа</div>;
       case 'workers':
-        // Only admin can see workers
-        return isAdmin ? <Workers /> : <div className="p-6 text-white/50">Нет доступа</div>;
+        return isAdmin ? <Workers accounts={accounts} /> : <div className="p-6 text-white/50">Нет доступа</div>;
       case 'settings':
         return <SettingsView />;
       default:
-        return <ImportAccounts />;
+        return <Dashboard accounts={accounts} offers={tradeOffers} />;
     }
   };
 
@@ -106,16 +102,16 @@ export default function App() {
         onLogout={logout}
         username={currentUser.username}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0">
         <AccountBar
           accounts={accounts}
           selectedAccount={selectedAccount}
           onSelectAccount={setSelectedAccount}
           onConnectAll={handleConnectAll}
         />
-        <main className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-hidden">
           {renderView()}
-        </main>
+        </div>
       </div>
     </div>
   );

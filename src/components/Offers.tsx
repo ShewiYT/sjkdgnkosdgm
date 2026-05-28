@@ -1,90 +1,78 @@
 import { useState } from 'react';
-import { CheckCircle, XCircle, Clock, ArrowRight, Filter, Send } from 'lucide-react';
-import type { TradeOffer, SteamAccount } from '../types';
+import { ArrowRightLeft, Check, X } from 'lucide-react';
+import type { SteamAccount, TradeOffer } from '../types';
 
 interface OffersProps {
-  offers: TradeOffer[];
   accounts: SteamAccount[];
+  offers: TradeOffer[];
 }
 
-export default function Offers({ offers, accounts }: OffersProps) {
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterAccount, setFilterAccount] = useState<string>('all');
+export default function Offers({ accounts, offers }: OffersProps) {
+  const [filter, setFilter] = useState<'all' | 'pending' | 'accepted' | 'declined'>('all');
+  const [searchAccount] = useState('');
 
   const filtered = offers.filter(o => {
-    if (filterStatus !== 'all' && o.status !== filterStatus) return false;
-    if (filterAccount !== 'all' && o.accountId !== filterAccount) return false;
+    if (filter !== 'all' && o.status !== filter) return false;
+    if (searchAccount && !accounts.find(a => a.id === o.accountId && a.login.includes(searchAccount))) return false;
     return true;
   });
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
-    return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth()+1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    return d.toLocaleString('ru', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
   return (
-    <div className="p-6 space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-white">Трейд Офферы</h1>
-          <p className="text-sm text-white/50 mt-1">Управление трейдами</p>
-        </div>
-        <button className="flex items-center gap-2 px-4 py-2 glass-accent rounded-xl text-white text-sm">
-          <Send size={16} />
-          Новый оффер
-        </button>
+    <div className="p-6 space-y-6 animate-fade-in overflow-y-auto max-h-[calc(100vh-52px)]">
+      <div>
+        <h1 className="text-2xl font-semibold text-white flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl glass-accent flex items-center justify-center">
+            <ArrowRightLeft size={20} />
+          </div>
+          Трейд Офферы
+        </h1>
+        <p className="text-sm text-white/50 mt-1">Управление трейдами</p>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 glass-card rounded-xl p-3">
-        <Filter size={16} className="text-white/50" />
-        <select
-          value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}
-          className="glass-input text-sm text-white px-3 py-1.5 rounded-lg outline-none"
-        >
-          <option value="all" className="bg-neutral-800">Все статусы</option>
-          <option value="pending" className="bg-neutral-800">Ожидающие</option>
-          <option value="accepted" className="bg-neutral-800">Принятые</option>
-          <option value="declined" className="bg-neutral-800">Отклоненные</option>
-        </select>
-        <select
-          value={filterAccount}
-          onChange={e => setFilterAccount(e.target.value)}
-          className="glass-input text-sm text-white px-3 py-1.5 rounded-lg outline-none"
-        >
-          <option value="all" className="bg-neutral-800">Все аккаунты</option>
-          {accounts.map(a => (
-            <option key={a.id} value={a.id} className="bg-neutral-800">{a.login}</option>
-          ))}
-        </select>
-        <span className="text-xs text-white/40 ml-auto">{filtered.length} офферов</span>
+      <div className="flex items-center gap-3">
+        {(['all', 'pending', 'accepted', 'declined'] as const).map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-3 py-1.5 rounded-xl text-xs ${
+              filter === f ? 'glass-accent text-white' : 'glass-button text-white/50'
+            }`}
+          >
+            {f === 'all' ? 'Все' : f === 'pending' ? '⏳ Ожидает' : f === 'accepted' ? '✅ Принят' : '❌ Отклонен'}
+          </button>
+        ))}
+        <span className="text-xs text-white/30 ml-auto">{filtered.length} офферов</span>
       </div>
 
-      {/* Offers list */}
       {filtered.length === 0 ? (
-        <div className="glass-card rounded-2xl p-8 text-center">
-          <Clock size={40} className="mx-auto mb-3 text-white/20" />
-          <div className="text-sm text-white/60">Нет офферов</div>
+        <div className="text-center py-16 text-white/30">
+          <ArrowRightLeft size={48} className="mx-auto mb-4 opacity-30" />
+          <div className="text-sm">Нет офферов</div>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {filtered.map(offer => {
             const acc = accounts.find(a => a.id === offer.accountId);
             return (
-              <div key={offer.id} className="glass-card rounded-2xl p-4">
-                <div className="flex items-center justify-between mb-3">
+              <div key={offer.id} className="glass-card rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">{offer.partnerAvatar}</span>
+                    <span className="text-xl">{offer.partnerAvatar}</span>
                     <div>
-                      <div className="text-sm text-white font-medium">{offer.partnerName}</div>
+                      <div className="text-sm font-medium text-white">{offer.partnerName}</div>
                       <div className="text-[10px] text-white/40">
                         {acc && <span>через {acc.login} • </span>}
                         {formatTime(offer.timestamp)}
                       </div>
                     </div>
                   </div>
-                  <span className={`text-xs px-3 py-1 rounded-full font-medium ${
+                  <span className={`text-xs px-3 py-1 rounded-full ${
                     offer.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
                     offer.status === 'accepted' ? 'bg-green-500/20 text-green-400' :
                     'bg-red-500/20 text-red-400'
@@ -94,32 +82,27 @@ export default function Offers({ offers, accounts }: OffersProps) {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  {/* Items Give */}
-                  <div className="flex-1 glass-light rounded-xl p-3">
-                    <div className="text-[10px] text-red-400 mb-2 font-medium">📤 Отдаём ({offer.itemsGive.length})</div>
-                    <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="glass-light rounded-xl p-3">
+                    <div className="text-xs text-red-400/80 mb-2">📤 Отдаём ({offer.itemsGive.length})</div>
+                    <div className="space-y-1">
                       {offer.itemsGive.map(item => (
-                        <div key={item.id} className="glass rounded-lg px-2 py-1 text-[10px]">
-                          <span className="mr-1">{item.icon}</span>
-                          <span className="text-white">{item.name}</span>
-                          <span className="text-green-400 ml-1">₽{item.price.toFixed(0)}</span>
+                        <div key={item.id} className="flex items-center gap-2 text-xs">
+                          <span>{item.icon}</span>
+                          <span className="text-white truncate flex-1">{item.name}</span>
+                          <span className="text-white/40">₽{item.price.toFixed(0)}</span>
                         </div>
                       ))}
                     </div>
                   </div>
-
-                  <ArrowRight size={20} className="text-white/30 shrink-0" />
-
-                  {/* Items Receive */}
-                  <div className="flex-1 glass-light rounded-xl p-3">
-                    <div className="text-[10px] text-green-400 mb-2 font-medium">📥 Получаем ({offer.itemsReceive.length})</div>
-                    <div className="flex flex-wrap gap-2">
+                  <div className="glass-light rounded-xl p-3">
+                    <div className="text-xs text-green-400/80 mb-2">📥 Получаем ({offer.itemsReceive.length})</div>
+                    <div className="space-y-1">
                       {offer.itemsReceive.map(item => (
-                        <div key={item.id} className="glass rounded-lg px-2 py-1 text-[10px]">
-                          <span className="mr-1">{item.icon}</span>
-                          <span className="text-white">{item.name}</span>
-                          <span className="text-green-400 ml-1">₽{item.price.toFixed(0)}</span>
+                        <div key={item.id} className="flex items-center gap-2 text-xs">
+                          <span>{item.icon}</span>
+                          <span className="text-white truncate flex-1">{item.name}</span>
+                          <span className="text-white/40">₽{item.price.toFixed(0)}</span>
                         </div>
                       ))}
                     </div>
@@ -127,15 +110,12 @@ export default function Offers({ offers, accounts }: OffersProps) {
                 </div>
 
                 {offer.status === 'pending' && (
-                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5">
-                    <button className="flex items-center gap-1 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-xs">
-                      <CheckCircle size={14} /> Принять
+                  <div className="flex gap-2">
+                    <button className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-green-500/20 text-green-400 hover:bg-green-500/30 text-xs">
+                      <Check size={14} /> Принять
                     </button>
-                    <button className="flex items-center gap-1 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-xs">
-                      <XCircle size={14} /> Отклонить
-                    </button>
-                    <button className="flex items-center gap-1 px-3 py-1.5 glass-accent text-white rounded-lg text-xs ml-auto">
-                      <Clock size={14} /> SDA
+                    <button className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs">
+                      <X size={14} /> Отклонить
                     </button>
                   </div>
                 )}

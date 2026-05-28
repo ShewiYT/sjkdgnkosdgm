@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { steamApi } from './api';
-import type { SteamAccount, ChatMessage, TradeOffer, Worker, MaFile, User } from './types';
+import type { SteamAccount, ChatMessage, TradeOffer, Worker, MaFile, User, DomainConfig } from './types';
 
 interface AppStore {
   // Auth
@@ -13,6 +13,7 @@ interface AppStore {
   addWorker: (data: { username: string; password: string; assignedAccounts: string[] }) => void;
   updateWorker: (id: string, data: Partial<Worker>) => void;
   removeWorker: (id: string) => void;
+  loadWorkers: () => void;
 
   // Accounts
   accounts: SteamAccount[];
@@ -21,8 +22,6 @@ interface AppStore {
   removeAccount: (id: string) => void;
   updateAccount: (id: string, data: Partial<SteamAccount>) => void;
   clearAccounts: () => void;
-
-  // Get accounts for current user (worker sees only assigned, admin sees all)
   getVisibleAccounts: () => SteamAccount[];
 
   // Connection
@@ -37,9 +36,15 @@ interface AppStore {
   addMessage: (message: ChatMessage) => void;
   fetchNewMessages: () => Promise<void>;
   sendMessage: (accountId: string, friendSteamId: string, friendName: string, text: string) => Promise<boolean>;
-  
+
   // Trade offers
   tradeOffers: TradeOffer[];
+
+  // Domains
+  domains: DomainConfig[];
+  addDomain: (domain: string, target: 'panel' | 'api') => void;
+  removeDomain: (id: string) => void;
+  updateDomain: (id: string, data: Partial<DomainConfig>) => void;
 
   // Polling
   startPolling: () => void;
@@ -47,7 +52,6 @@ interface AppStore {
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
-
 const avatarEmojis = ['🎮', '👾', '🕹️', '🎯', '🔫', '⚔️', '🛡️', '💀', '🤖', '👽', '🐉', '🦊', '🐺', '🦅', '🦈'];
 const servers = ['EU-1', 'EU-2', 'EU-3', 'RU-1', 'RU-2', 'US-1', 'US-2'];
 
@@ -60,7 +64,7 @@ const DEFAULT_ADMIN: User = {
   createdAt: new Date().toISOString(),
 };
 
-const DEFAULT_ADMIN_PASSWORD = 'admin123'; // Change this!
+const DEFAULT_ADMIN_PASSWORD = 'admin123';
 
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -73,37 +77,36 @@ export const useAppStore = create<AppStore>()(
       accounts: [],
       messages: [],
       tradeOffers: [],
+      domains: [],
 
-      // Auth
+      // Auth — uses server API so it works from any browser
       login: async (username, password) => {
-        // Check admin
-        if (username === 'admin' && password === DEFAULT_ADMIN_PASSWORD) {
-          set({ currentUser: DEFAULT_ADMIN });
-          return true;
-        }
-
-        // Check workers
-        const worker = get().workers.find(w => w.username === username && w.password === password);
-        if (worker) {
-          const user: User = {
-            id: worker.id,
-            username: worker.username,
-            role: 'worker',
-            assignedAccounts: worker.assignedAccounts,
-            createdAt: worker.lastActive,
-          };
-          set({ currentUser: user });
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+          });
+          const data = await res.json();
           
-          // Update last active
-          set(state => ({
-            workers: state.workers.map(w => 
-              w.id === worker.id ? { ...w, lastActive: new Date().toISOString() } : w
-            )
-          }));
-          
-          return true;
+          if (data.success && data.user) {
+            set({ currentUser: data.user as User });
+            // Load workers from server
+            get().loadWorkers();
+            return true;
+          }
+        } catch {
+          // Fallback to local check
+          if (username === 'admin' && password === DEFAULT_ADMIN_PASSWORD) {
+            set({ currentUser: DEFAULT_ADMIN });
+            return true;
+          }
+          const worker = get().workers.find(w => w.username === username && w.password === password);
+          if (worker) {
+            set({ currentUser: { id: worker.id, username: worker.username, role: 'worker', assignedAccounts: worker.assignedAccounts, createdAt: worker.lastActive } as User });
+            return true;
+          }
         }
-
         return false;
       },
 
@@ -112,34 +115,53 @@ export const useAppStore = create<AppStore>()(
       },
 
       addWorker: (data) => {
-        const newWorker: Worker = {
-          id: generateId(),
-          username: data.username,
-          password: data.password,
-          assignedAccounts: data.assignedAccounts,
-          permissions: {
-            chat: true,
-            browser: false,
-            offersSend: false,
-            offersSendAll: false,
-            offersConfirm: false,
-            guard: false,
-            inGameMode: false,
-          },
-          lastActive: new Date().toISOString(),
-          actionsLog: [],
-        };
-        set(state => ({ workers: [...state.workers, newWorker] }));
+        // Save to server
+        fetch('/api/workers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        }).then(res => res.json()).then(result => {
+          if (result.success && result.worker) {
+            set(state => ({ workers: [...state.workers, result.worker] }));
+          }
+        }).catch(() => {
+          // Fallback: save locally
+          const newWorker: Worker = {
+            id: generateId(),
+            username: data.username,
+            password: data.password,
+            assignedAccounts: data.assignedAccounts,
+            permissions: { chat: true, browser: false, offersSend: false, offersSendAll: false, offersConfirm: false, guard: false, inGameMode: false },
+            lastActive: new Date().toISOString(),
+            actionsLog: [],
+          };
+          set(state => ({ workers: [...state.workers, newWorker] }));
+        });
       },
 
       updateWorker: (id, data) => {
         set(state => ({
           workers: state.workers.map(w => w.id === id ? { ...w, ...data } : w)
         }));
+        // Sync to server
+        fetch(`/api/workers/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        }).catch(() => {});
       },
 
       removeWorker: (id) => {
         set(state => ({ workers: state.workers.filter(w => w.id !== id) }));
+        fetch(`/api/workers/${id}`, { method: 'DELETE' }).catch(() => {});
+      },
+
+      loadWorkers: () => {
+        fetch('/api/workers').then(res => res.json()).then(data => {
+          if (data.workers) {
+            set({ workers: data.workers });
+          }
+        }).catch(() => {});
       },
 
       // Accounts
@@ -213,64 +235,67 @@ export const useAppStore = create<AppStore>()(
           }
         });
         const visibleIds = new Set(visibleAccounts.map(a => a.id));
-        set(state => ({ 
+        set(state => ({
           accounts: state.accounts.filter(a => !visibleIds.has(a.id)),
-          messages: [] 
+          messages: []
         }));
       },
 
       getVisibleAccounts: () => {
         const { currentUser, accounts, workers } = get();
         if (!currentUser) return [];
-        
-        if (currentUser.role === 'admin') {
-          return accounts;
-        }
-        
-        // Worker sees only assigned accounts
+        if (currentUser.role === 'admin') return accounts;
         const worker = workers.find(w => w.id === currentUser.id);
         if (!worker) return [];
-        
         return accounts.filter(a => worker.assignedAccounts.includes(a.id));
       },
 
-      // Connection methods
+      // Connection
       connectAccount: async (id) => {
         const acc = get().accounts.find(a => a.id === id);
         if (!acc) return;
-
         set(state => ({
-          accounts: state.accounts.map(a => 
+          accounts: state.accounts.map(a =>
             a.id === id ? { ...a, status: 'connecting' as const, errorMessage: undefined } : a
           )
         }));
-
-        const result = await steamApi.login(
-          id,
-          acc.login,
-          acc.password,
-          acc.maFile?.shared_secret,
-          acc.maFile?.identity_secret
-        );
-
-        if (result.success || result.status === 'online') {
+        
+        try {
+          const result = await steamApi.login(
+            id, acc.login, acc.password,
+            acc.maFile?.shared_secret,
+            acc.maFile?.identity_secret
+          );
+          
+          if (result.success || result.status === 'online') {
+            set(state => ({
+              accounts: state.accounts.map(a =>
+                a.id === id ? { 
+                  ...a, 
+                  status: 'online' as const, 
+                  steamId: result.steamId || a.steamId,
+                  errorMessage: undefined,
+                } : a
+              )
+            }));
+          } else {
+            set(state => ({
+              accounts: state.accounts.map(a =>
+                a.id === id ? { 
+                  ...a, 
+                  status: 'error' as const, 
+                  errorMessage: result.error || result.message || 'Ошибка подключения',
+                } : a
+              )
+            }));
+          }
+        } catch (err) {
           set(state => ({
-            accounts: state.accounts.map(a => 
-              a.id === id ? { 
-                ...a, 
-                status: 'online' as const, 
-                steamId: result.steamId,
-                errorMessage: undefined 
-              } : a
-            )
-          }));
-        } else {
-          set(state => ({
-            accounts: state.accounts.map(a => 
+            accounts: state.accounts.map(a =>
               a.id === id ? { 
                 ...a, 
                 status: 'error' as const, 
-                errorMessage: result.error 
+                errorMessage: 'Сервер недоступен',
               } : a
             )
           }));
@@ -280,7 +305,7 @@ export const useAppStore = create<AppStore>()(
       disconnectAccount: async (id) => {
         await steamApi.logout(id);
         set(state => ({
-          accounts: state.accounts.map(a => 
+          accounts: state.accounts.map(a =>
             a.id === id ? { ...a, status: 'offline' as const } : a
           )
         }));
@@ -302,21 +327,23 @@ export const useAppStore = create<AppStore>()(
       },
 
       refreshStatuses: async () => {
-        const statuses = await steamApi.getAllStatuses();
-        set(state => ({
-          accounts: state.accounts.map(a => {
-            const status = statuses[a.id];
-            if (status) {
-              return {
-                ...a,
-                status: status.status as SteamAccount['status'],
-                steamId: status.steamId,
-                friendsCount: status.friendsCount || a.friendsCount,
-              };
-            }
-            return a;
-          })
-        }));
+        try {
+          const statuses = await steamApi.getAllStatuses();
+          set(state => ({
+            accounts: state.accounts.map(a => {
+              const status = statuses[a.id];
+              if (status) {
+                return {
+                  ...a,
+                  status: status.status as SteamAccount['status'],
+                  steamId: status.steamId,
+                  friendsCount: status.friendsCount || a.friendsCount,
+                };
+              }
+              return a;
+            })
+          }));
+        } catch {}
       },
 
       // Messages
@@ -325,20 +352,18 @@ export const useAppStore = create<AppStore>()(
       },
 
       fetchNewMessages: async () => {
-        const newMessages = await steamApi.getMessages();
-        if (newMessages.length > 0) {
-          set(state => ({
-            messages: [...state.messages, ...newMessages].slice(-500)
-          }));
-        }
+        try {
+          const newMessages = await steamApi.getMessages();
+          if (newMessages.length > 0) {
+            set(state => ({ messages: [...state.messages, ...newMessages].slice(-500) }));
+          }
+        } catch {}
       },
 
       sendMessage: async (accountId, friendSteamId, friendName, text) => {
         const acc = get().accounts.find(a => a.id === accountId);
         if (!acc) return false;
-
         const success = await steamApi.sendMessage(accountId, friendSteamId, text);
-        
         if (success) {
           const msg: ChatMessage = {
             id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -353,14 +378,81 @@ export const useAppStore = create<AppStore>()(
           };
           get().addMessage(msg);
         }
-        
         return success;
+      },
+
+      // Domains
+      addDomain: (domain, target) => {
+        // Check if domain already exists
+        if (get().domains.some(d => d.domain === domain)) return;
+        
+        const newDomain: DomainConfig = {
+          id: generateId(),
+          domain,
+          target,
+          ssl: false,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        };
+        set(state => ({ domains: [...state.domains, newDomain] }));
+
+        // Try to call server to configure nginx and SSL
+        steamApi.addDomain(domain, target).then(result => {
+          if (result.error === 'Network error' || result.error === 'Server unavailable') {
+            // Server API not available — keep as pending, user will run script manually
+            set(state => ({
+              domains: state.domains.map(d =>
+                d.domain === domain ? {
+                  ...d,
+                  status: 'pending' as const,
+                  errorMessage: undefined,
+                } : d
+              )
+            }));
+          } else if (result.success) {
+            set(state => ({
+              domains: state.domains.map(d =>
+                d.domain === domain ? {
+                  ...d,
+                  status: 'active' as const,
+                  ssl: true,
+                  sslExpiry: result.sslExpiry,
+                } : d
+              )
+            }));
+          } else {
+            set(state => ({
+              domains: state.domains.map(d =>
+                d.domain === domain ? {
+                  ...d,
+                  status: 'pending' as const,
+                  errorMessage: undefined,
+                } : d
+              )
+            }));
+          }
+        }).catch(() => {
+          // Network error — keep as pending
+        });
+      },
+
+      removeDomain: (id) => {
+        const domain = get().domains.find(d => d.id === id);
+        if (domain) {
+          steamApi.removeDomain(id).catch(() => {});
+        }
+        set(state => ({ domains: state.domains.filter(d => d.id !== id) }));
+      },
+
+      updateDomain: (id, data) => {
+        set(state => ({
+          domains: state.domains.map(d => d.id === id ? { ...d, ...data } : d)
+        }));
       },
 
       // Polling
       startPolling: () => {
         if (pollingInterval) return;
-        
         pollingInterval = setInterval(async () => {
           await get().fetchNewMessages();
           await get().refreshStatuses();
@@ -376,7 +468,7 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: 'sukacombine-storage',
-      partialize: (state) => ({ 
+      partialize: (state) => ({
         accounts: state.accounts.map(a => ({
           ...a,
           status: 'offline' as const,
@@ -384,6 +476,7 @@ export const useAppStore = create<AppStore>()(
         })),
         workers: state.workers,
         users: state.users,
+        domains: state.domains,
       }),
     }
   )

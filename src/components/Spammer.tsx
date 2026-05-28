@@ -1,59 +1,65 @@
-import { useState } from 'react';
-import { Megaphone, Play, Square, Clock, Users, AlertTriangle } from 'lucide-react';
-import type { SteamAccount } from '../types';
+import { useState, useRef, useCallback } from 'react';
+import { MessageCircle, Play, Square, AlertCircle } from 'lucide-react';
+import { useAppStore } from '../store';
 
-interface SpammerProps {
-  accounts: SteamAccount[];
-}
-
-export default function Spammer({ accounts }: SpammerProps) {
-  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
+export default function Spammer() {
+  const { accounts } = useAppStore();
   const [message, setMessage] = useState('');
-  const [delay, setDelay] = useState(3);
+  const [delay, setDelay] = useState(5);
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
+  const [steamIds, setSteamIds] = useState('');
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const isRunningRef = useRef(false);
   const [isRunning, setIsRunning] = useState(false);
-  const [progress, setProgress] = useState({ sent: 0, total: 0 });
 
   const onlineAccounts = accounts.filter(a => a.status === 'online');
 
   const toggleAccount = (id: string) => {
-    setSelectedAccounts(prev => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
+    setSelectedAccounts(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
   };
 
-  const selectAll = () => {
-    if (selectedAccounts.size === onlineAccounts.length) {
-      setSelectedAccounts(new Set());
-    } else {
-      setSelectedAccounts(new Set(onlineAccounts.map(a => a.id)));
-    }
-  };
+  const startSpam = useCallback(async () => {
+    const ids = steamIds.split('\n').map(l => l.trim()).filter(Boolean);
+    if (ids.length === 0 || selectedAccounts.length === 0 || !message.trim()) return;
 
-  const startSpam = () => {
-    if (!message.trim() || selectedAccounts.size === 0) return;
-    const total = selectedAccounts.size * 10;
+    isRunningRef.current = true;
     setIsRunning(true);
-    setProgress({ sent: 0, total });
-    
+    setProgress({ current: 0, total: ids.length * selectedAccounts.length });
+
     let count = 0;
-    const interval = setInterval(() => {
-      count++;
-      setProgress({ sent: count, total });
-      if (count >= total) {
-        clearInterval(interval);
-        setIsRunning(false);
+    for (const accountId of selectedAccounts) {
+      for (const targetId of ids) {
+        if (!isRunningRef.current) break;
+        try {
+          await fetch('/api/steam/message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId, friendSteamId: targetId, message }),
+          });
+        } catch {}
+        count++;
+        setProgress({ current: count, total: ids.length * selectedAccounts.length });
+        await new Promise(r => setTimeout(r, delay * 1000));
       }
-    }, delay * 100);
+    }
+
+    isRunningRef.current = false;
+    setIsRunning(false);
+  }, [steamIds, selectedAccounts, message, delay]);
+
+  const stop = () => {
+    isRunningRef.current = false;
+    setIsRunning(false);
   };
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
+    <div className="p-6 space-y-6 animate-fade-in overflow-y-auto max-h-[calc(100vh-52px)]">
       <div>
         <h1 className="text-2xl font-semibold text-white flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl glass-accent flex items-center justify-center">
-            <Megaphone size={20} />
+            <MessageCircle size={20} />
           </div>
           Спамер
         </h1>
@@ -61,106 +67,116 @@ export default function Spammer({ accounts }: SpammerProps) {
       </div>
 
       <div className="glass-card rounded-2xl p-4 border border-yellow-500/20">
-        <div className="flex items-center gap-2 text-yellow-400 text-xs">
-          <AlertTriangle size={16} />
-          Используйте аккуратно! Чрезмерная рассылка может привести к ограничениям.
+        <div className="flex items-center gap-3 text-yellow-400">
+          <AlertCircle size={18} />
+          <span className="text-xs">Используйте аккуратно! Чрезмерная рассылка может привести к ограничениям.</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Message */}
-        <div className="lg:col-span-2 space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-4">
           <div className="glass-card rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-medium text-white">💬 Сообщение</h3>
+            <h3 className="text-sm font-medium text-white">Сообщение</h3>
             <textarea
               value={message}
               onChange={e => setMessage(e.target.value)}
-              placeholder="Введите текст сообщения..."
-              rows={5}
-              className="w-full glass-input text-sm text-white px-4 py-3 rounded-xl outline-none resize-none placeholder:text-white/20"
+              placeholder="Текст сообщения..."
+              rows={4}
+              className="w-full glass-input text-sm text-white px-4 py-3 rounded-xl outline-none resize-none"
+              disabled={isRunning}
             />
-            
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Clock size={14} className="text-white/50" />
-                <span className="text-xs text-white/50">Задержка:</span>
-                <input
-                  type="number"
-                  value={delay}
-                  onChange={e => setDelay(Number(e.target.value))}
-                  min={1}
-                  max={60}
-                  className="w-16 glass-input text-sm text-white px-2 py-1 rounded-lg outline-none text-center"
-                />
-                <span className="text-xs text-white/50">сек</span>
-              </div>
-            </div>
+          </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={isRunning ? () => setIsRunning(false) : startSpam}
-                disabled={!isRunning && (!message.trim() || selectedAccounts.size === 0)}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isRunning 
-                    ? 'bg-red-500/20 text-red-400' 
-                    : 'glass-accent text-white disabled:opacity-40'
-                }`}
-              >
-                {isRunning ? <><Square size={16} /> Остановить</> : <><Play size={16} /> Запустить</>}
-              </button>
-              {isRunning && (
-                <div className="flex items-center gap-2 text-xs text-white/50">
-                  <div className="w-32 h-2 rounded-full glass overflow-hidden">
-                    <div
-                      className="bg-gradient-to-r from-orange-500 to-red-500 h-full transition-all"
-                      style={{ width: `${(progress.sent / progress.total) * 100}%` }}
-                    />
-                  </div>
-                  {progress.sent}/{progress.total}
-                </div>
-              )}
+          <div className="glass-card rounded-2xl p-5 space-y-4">
+            <h3 className="text-sm font-medium text-white">Steam ID получателей</h3>
+            <textarea
+              value={steamIds}
+              onChange={e => setSteamIds(e.target.value)}
+              placeholder={"76561198012345678\n76561198087654321"}
+              rows={6}
+              className="w-full glass-input text-sm text-white px-4 py-3 rounded-xl outline-none resize-none font-mono placeholder:text-white/20"
+              disabled={isRunning}
+            />
+            <div className="text-xs text-white/30">
+              {steamIds.split('\n').filter(l => l.trim()).length} получателей
             </div>
+          </div>
+
+          <div className="glass-card rounded-2xl p-5 space-y-3">
+            <h3 className="text-sm font-medium text-white">Задержка (сек)</h3>
+            <input
+              type="number"
+              value={delay}
+              onChange={e => setDelay(Number(e.target.value))}
+              min={1}
+              max={60}
+              className="w-full glass-input text-sm text-white px-4 py-3 rounded-xl outline-none"
+              disabled={isRunning}
+            />
           </div>
         </div>
 
-        {/* Account selection */}
-        <div className="glass-card rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-white flex items-center gap-2">
-              <Users size={16} className="text-white/50" /> Аккаунты
-            </h3>
-            <button
-              onClick={selectAll}
-              className="text-[10px] text-blue-400 hover:text-blue-300"
-            >
-              {selectedAccounts.size === onlineAccounts.length ? 'Снять' : 'Выбрать все'}
-            </button>
+        <div className="space-y-4">
+          <div className="glass-card rounded-2xl p-5 space-y-3">
+            <h3 className="text-sm font-medium text-white">Аккаунты ({onlineAccounts.length} онлайн)</h3>
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {onlineAccounts.map(acc => (
+                <label
+                  key={acc.id}
+                  className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-colors ${
+                    selectedAccounts.includes(acc.id) ? 'bg-blue-500/10 border border-blue-500/30' : 'hover:bg-white/5'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedAccounts.includes(acc.id)}
+                    onChange={() => toggleAccount(acc.id)}
+                    className="accent-blue-500"
+                    disabled={isRunning}
+                  />
+                  <span className="text-lg">{acc.avatar}</span>
+                  <span className="text-sm text-white">{acc.login}</span>
+                </label>
+              ))}
+              {onlineAccounts.length === 0 && (
+                <div className="text-xs text-white/30 text-center py-4">Нет онлайн аккаунтов</div>
+              )}
+            </div>
           </div>
-          <div className="space-y-1 max-h-60 overflow-y-auto">
-            {accounts.map(acc => (
-              <label
-                key={acc.id}
-                className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer transition-colors ${
-                  selectedAccounts.has(acc.id) ? 'glass-accent' : 'hover:bg-white/5'
-                } ${acc.status !== 'online' ? 'opacity-40' : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedAccounts.has(acc.id)}
-                  onChange={() => toggleAccount(acc.id)}
-                  disabled={acc.status !== 'online'}
-                  className="accent-blue-500"
+
+          {/* Progress */}
+          {(isRunning || progress.current > 0) && (
+            <div className="glass-card rounded-2xl p-5 space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-white">Прогресс</span>
+                <span className="text-white/50">{progress.current}/{progress.total}</span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all"
+                  style={{ width: `${(progress.current / Math.max(progress.total, 1)) * 100}%` }}
                 />
-                <span className="text-lg">{acc.avatar}</span>
-                <div className="flex-1">
-                  <div className="text-xs text-white">{acc.login}</div>
-                  <div className="text-[10px] text-white/40">{acc.friendsCount} друзей</div>
-                </div>
-              </label>
-            ))}
-          </div>
-          <div className="mt-3 pt-3 border-t border-white/5 text-[10px] text-white/40 text-center">
-            Выбрано: {selectedAccounts.size}
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            {isRunning ? (
+              <button
+                onClick={stop}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30"
+              >
+                <Square size={16} /> Остановить
+              </button>
+            ) : (
+              <button
+                onClick={startSpam}
+                disabled={!message.trim() || selectedAccounts.length === 0 || !steamIds.trim()}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl glass-accent text-white disabled:opacity-40"
+              >
+                <Play size={16} /> Начать рассылку
+              </button>
+            )}
           </div>
         </div>
       </div>

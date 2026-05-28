@@ -1,5 +1,4 @@
 // Steam API client
-
 const API_BASE = '/api/steam';
 
 export interface LoginResponse {
@@ -42,21 +41,23 @@ export const steamApi = {
       });
       return await res.json();
     } catch (err) {
-      return { error: 'Network error' };
+      return { error: 'Сервер недоступен' };
     }
   },
 
   // Logout from Steam
   async logout(accountId: string): Promise<void> {
-    await fetch(`${API_BASE}/logout`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accountId }),
-    });
+    try {
+      await fetch(`${API_BASE}/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId }),
+      });
+    } catch {}
   },
 
   // Get account status
-  async getStatus(accountId: string): Promise<{ status: string; steamId?: string }> {
+  async getStatus(accountId: string): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/status/${accountId}`);
       return await res.json();
@@ -66,7 +67,7 @@ export const steamApi = {
   },
 
   // Get all accounts status
-  async getAllStatuses(): Promise<Record<string, { status: string; steamId?: string; friendsCount?: number }>> {
+  async getAllStatuses(): Promise<Record<string, any>> {
     try {
       const res = await fetch(`${API_BASE}/status-all`);
       return await res.json();
@@ -113,7 +114,7 @@ export const steamApi = {
   },
 
   // Generate Guard code
-  async getGuardCode(sharedSecret: string): Promise<{ code: string; timeLeft: number } | null> {
+  async getGuardCode(sharedSecret: string): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/guard-code`, {
         method: 'POST',
@@ -123,6 +124,126 @@ export const steamApi = {
       return await res.json();
     } catch {
       return null;
+    }
+  },
+
+  // Open browser session for account
+  async openBrowser(accountId: string, url: string): Promise<any> {
+    try {
+      const res = await fetch(`${API_BASE}/browser/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, url }),
+      });
+      return await res.json();
+    } catch {
+      return { error: 'Network error' };
+    }
+  },
+
+  // Navigate browser
+  async navigateBrowser(accountId: string, url: string): Promise<any> {
+    try {
+      const res = await fetch(`${API_BASE}/browser/navigate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, url }),
+      });
+      return await res.json();
+    } catch {
+      return { error: 'Network error' };
+    }
+  },
+
+  // Get browser screenshot
+  async getBrowserScreenshot(accountId: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${API_BASE}/browser/screenshot/${accountId}`);
+      const data = await res.json();
+      return data.screenshot || null;
+    } catch {
+      return null;
+    }
+  },
+
+  // Close browser
+  async closeBrowser(accountId: string): Promise<void> {
+    try {
+      await fetch(`${API_BASE}/browser/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId }),
+      });
+    } catch {}
+  },
+
+  // VPS info
+  async getVpsInfo(): Promise<any> {
+    try {
+      const res = await fetch('/api/vps/info');
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  // VPS actions
+  async vpsAction(action: string): Promise<any> {
+    try {
+      const res = await fetch('/api/vps/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      return await res.json();
+    } catch {
+      return { error: 'Network error' };
+    }
+  },
+
+  // Domain management
+  async getDomains(): Promise<any[]> {
+    try {
+      const res = await fetch('/api/domains');
+      const data = await res.json();
+      return data.domains || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async addDomain(domain: string, target: 'panel' | 'api'): Promise<any> {
+    try {
+      const res = await fetch('/api/domains', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, target }),
+      });
+      return await res.json();
+    } catch {
+      return { error: 'Network error' };
+    }
+  },
+
+  async removeDomain(domainId: string): Promise<any> {
+    try {
+      const res = await fetch(`/api/domains/${domainId}`, {
+        method: 'DELETE',
+      });
+      return await res.json();
+    } catch {
+      return { error: 'Network error' };
+    }
+  },
+
+  async renewSsl(domainId: string): Promise<any> {
+    try {
+      const res = await fetch(`/api/domains/${domainId}/renew-ssl`, {
+        method: 'POST',
+      });
+      return await res.json();
+    } catch {
+      return { error: 'Network error' };
     }
   },
 };

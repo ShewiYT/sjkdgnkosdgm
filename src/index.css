@@ -24,6 +24,21 @@
   --color-warning: #ff9f0a;
   --color-danger: #ff453a;
   --color-info: #0a84ff;
+
+  /* Neon colors for compatibility */
+  --color-neon-blue: #0a84ff;
+  --color-neon-purple: #5e5ce6;
+  --color-neon-green: #30d158;
+  --color-neon-orange: #ff9f0a;
+  --color-neon-red: #ff453a;
+
+  /* Steam colors */
+  --color-steam-card: rgba(44, 44, 46, 0.6);
+  --color-steam-dark: rgba(28, 28, 30, 0.85);
+  --color-steam-hover: rgba(58, 58, 60, 0.7);
+  --color-steam-border: rgba(255, 255, 255, 0.08);
+  --color-steam-input: rgba(38, 38, 40, 0.8);
+  --color-steam-text: rgba(255, 255, 255, 0.55);
 }
 
 * {
@@ -137,6 +152,11 @@ body {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(10, 132, 255, 0.3);
+}
+
+/* Neon border */
+.neon-border {
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* Animations */

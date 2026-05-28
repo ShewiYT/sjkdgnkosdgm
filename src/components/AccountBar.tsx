@@ -40,7 +40,7 @@ export default function AccountBar({ accounts, selectedAccount, onSelectAccount,
                 <div className="text-sm text-white font-medium">{selectedAccount.login}</div>
                 <div className="text-[10px] text-white/40">Lvl {selectedAccount.level} • {selectedAccount.server}</div>
               </div>
-              <div className={`status-dot ${statusConfig[selectedAccount.status].color}`} />
+              <div className={`status-dot ${statusConfig[selectedAccount.status]?.color || 'status-offline'}`} />
             </>
           ) : (
             <span className="text-sm text-white/50">
@@ -75,7 +75,7 @@ export default function AccountBar({ accounts, selectedAccount, onSelectAccount,
                     <div className="text-[10px] text-red-400 mt-0.5">{acc.errorMessage}</div>
                   )}
                 </div>
-                <div className={`status-dot ${statusConfig[acc.status].color}`} />
+                <div className={`status-dot ${statusConfig[acc.status]?.color || 'status-offline'}`} />
               </button>
             ))}
           </div>

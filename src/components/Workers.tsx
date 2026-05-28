@@ -1,34 +1,26 @@
 import { useState } from 'react';
-import { 
-  Users, UserPlus, Shield, MessageSquare, Globe, 
-  ArrowRightLeft, Gamepad2, Smartphone, Clock, Eye, Trash2
-} from 'lucide-react';
+import { UserCog, Plus, Trash2, Clock, MessageSquare, Globe, ArrowRightLeft, Shield, Gamepad2, CheckCircle, ChevronDown, ChevronUp, Package } from 'lucide-react';
 import { useAppStore } from '../store';
-import type { Worker } from '../types';
+import type { SteamAccount } from '../types';
 
-export default function Workers() {
-  const { accounts, workers, addWorker, updateWorker, removeWorker } = useAppStore();
+interface WorkersProps {
+  accounts: SteamAccount[];
+}
+
+export default function Workers({ accounts }: WorkersProps) {
+  const { workers, addWorker, updateWorker, removeWorker } = useAppStore();
   const [showAddModal, setShowAddModal] = useState(false);
-  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   const [newWorker, setNewWorker] = useState({ username: '', password: '', assignedAccounts: [] as string[] });
-  
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
 
-  const toggleLogs = (wId: string) => {
-    setExpandedLogs(prev => {
-      const n = new Set(prev);
-      n.has(wId) ? n.delete(wId) : n.add(wId);
-      return n;
-    });
-  };
-
-  const permLabels: { key: keyof Worker['permissions']; icon: React.ReactNode; label: string }[] = [
-    { key: 'chat', icon: <MessageSquare size={14} />, label: 'Chat' },
-    { key: 'browser', icon: <Globe size={14} />, label: 'Browser' },
-    { key: 'offersSend', icon: <ArrowRightLeft size={14} />, label: 'Offers' },
-    { key: 'offersSendAll', icon: <ArrowRightLeft size={14} />, label: 'Offers All' },
-    { key: 'offersConfirm', icon: <Shield size={14} />, label: 'Confirm' },
-    { key: 'guard', icon: <Smartphone size={14} />, label: 'Guard' },
-    { key: 'inGameMode', icon: <Gamepad2 size={14} />, label: 'In-Game' },
+  const permLabels = [
+    { key: 'chat' as const, icon: <MessageSquare size={10} />, label: 'Chat' },
+    { key: 'browser' as const, icon: <Globe size={10} />, label: 'Browser' },
+    { key: 'offersSend' as const, icon: <ArrowRightLeft size={10} />, label: 'Offers' },
+    { key: 'offersSendAll' as const, icon: <Package size={10} />, label: 'Offers All' },
+    { key: 'offersConfirm' as const, icon: <CheckCircle size={10} />, label: 'Confirm' },
+    { key: 'guard' as const, icon: <Shield size={10} />, label: 'Guard' },
+    { key: 'inGameMode' as const, icon: <Gamepad2 size={10} />, label: 'In-Game' },
   ];
 
   const formatTime = (iso: string) => {
@@ -42,13 +34,11 @@ export default function Workers() {
 
   const handleCreateWorker = () => {
     if (!newWorker.username || !newWorker.password) return;
-    
     addWorker({
       username: newWorker.username,
       password: newWorker.password,
       assignedAccounts: newWorker.assignedAccounts,
     });
-    
     setNewWorker({ username: '', password: '', assignedAccounts: [] });
     setShowAddModal(false);
   };
@@ -57,27 +47,26 @@ export default function Workers() {
     const newAssigned = currentAssigned.includes(accountId)
       ? currentAssigned.filter(id => id !== accountId)
       : [...currentAssigned, accountId];
-    
     updateWorker(workerId, { assignedAccounts: newAssigned });
   };
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
+    <div className="p-6 space-y-6 animate-fade-in overflow-y-auto max-h-[calc(100vh-52px)]">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-white flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl glass-accent flex items-center justify-center">
-              <Users size={20} />
+              <UserCog size={20} />
             </div>
             Работники
           </h1>
           <p className="text-sm text-white/50 mt-1">Управление доступом к аккаунтам</p>
         </div>
         <button
-          onClick={() => setShowAddModal(!showAddModal)}
-          className="flex items-center gap-2 px-4 py-2 glass-accent rounded-xl text-white text-sm"
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl glass-accent text-white text-sm"
         >
-          <UserPlus size={16} />
+          <Plus size={16} />
           Добавить работника
         </button>
       </div>
@@ -85,12 +74,11 @@ export default function Workers() {
       {/* Add Worker Modal */}
       {showAddModal && (
         <div className="glass-card rounded-2xl p-5 space-y-4 animate-fade-in">
-          <h3 className="text-sm font-medium text-white">➕ Новый работник</h3>
+          <h3 className="text-sm font-semibold text-white">➕ Новый работник</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-white/50 block mb-1">Логин</label>
               <input
-                type="text"
                 value={newWorker.username}
                 onChange={e => setNewWorker(prev => ({ ...prev, username: e.target.value }))}
                 placeholder="worker_name"
@@ -100,7 +88,6 @@ export default function Workers() {
             <div>
               <label className="text-xs text-white/50 block mb-1">Пароль</label>
               <input
-                type="password"
                 value={newWorker.password}
                 onChange={e => setNewWorker(prev => ({ ...prev, password: e.target.value }))}
                 placeholder="••••••••"
@@ -109,8 +96,8 @@ export default function Workers() {
             </div>
           </div>
           <div>
-            <label className="text-xs text-white/50 block mb-2">Назначить аккаунты</label>
-            <div className="flex flex-wrap gap-2">
+            <label className="text-xs text-white/50 block mb-1">Назначить аккаунты</label>
+            <div className="flex flex-wrap gap-1">
               {accounts.map(acc => (
                 <button
                   key={acc.id}
@@ -122,10 +109,10 @@ export default function Workers() {
                         : [...prev.assignedAccounts, acc.id]
                     }));
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                  className={`px-2 py-1 rounded-lg text-[10px] ${
                     newWorker.assignedAccounts.includes(acc.id)
                       ? 'glass-accent text-white'
-                      : 'glass-button text-white/60'
+                      : 'glass-button text-white/50'
                   }`}
                 >
                   {acc.avatar} {acc.login}
@@ -133,18 +120,12 @@ export default function Workers() {
               ))}
             </div>
           </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={handleCreateWorker}
-              className="px-4 py-2 glass-accent rounded-xl text-white text-xs"
-            >
-              Создать
-            </button>
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="px-4 py-2 glass-button rounded-xl text-white/60 text-xs"
-            >
+          <div className="flex gap-3">
+            <button onClick={() => setShowAddModal(false)} className="flex-1 py-2 rounded-xl glass-button text-white/60 text-sm">
               Отмена
+            </button>
+            <button onClick={handleCreateWorker} className="flex-1 py-2 rounded-xl glass-accent text-white text-sm">
+              Создать
             </button>
           </div>
         </div>
@@ -152,77 +133,72 @@ export default function Workers() {
 
       {/* Workers list */}
       {workers.length === 0 ? (
-        <div className="glass-card rounded-2xl p-8 text-center">
-          <Users size={40} className="mx-auto mb-3 text-white/20" />
-          <div className="text-sm text-white/60">Нет работников</div>
-          <div className="text-xs text-white/30 mt-1">Нажмите "Добавить работника"</div>
+        <div className="text-center py-16 text-white/30">
+          <UserCog size={48} className="mx-auto mb-4 opacity-30" />
+          <div className="text-sm">Нет работников</div>
+          <div className="text-xs mt-1">Нажмите "Добавить работника"</div>
         </div>
       ) : (
         <div className="space-y-4">
           {workers.map(worker => (
-            <div key={worker.id} className="glass-card rounded-2xl overflow-hidden">
-              <div className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/50 to-purple-600/50 flex items-center justify-center text-xl text-white font-bold">
-                  {worker.username[0]?.toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-white">{worker.username}</div>
-                  <div className="text-[10px] text-white/40 flex items-center gap-1">
-                    <Clock size={10} />
-                    Был {formatTime(worker.lastActive)}
-                    <span className="mx-1">•</span>
-                    {worker.assignedAccounts.length} аккаунтов
+            <div key={worker.id} className="glass-card rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl glass-accent flex items-center justify-center text-sm font-bold">
+                    {worker.username[0]?.toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-white">{worker.username}</div>
+                    <div className="text-[10px] text-white/40 flex items-center gap-2">
+                      <Clock size={10} />
+                      Был {formatTime(worker.lastActive)}
+                      •
+                      {worker.assignedAccounts.length} аккаунтов
+                    </div>
                   </div>
                 </div>
 
                 {/* Permissions badges */}
-                <div className="flex flex-wrap gap-1">
+                <div className="flex gap-1">
                   {permLabels.map(p => (
-                    <span
+                    <button
                       key={p.key}
-                      className={`text-[9px] px-2 py-0.5 rounded-full flex items-center gap-0.5 ${
+                      onClick={() => {
+                        updateWorker(worker.id, {
+                          permissions: { ...worker.permissions, [p.key]: !worker.permissions[p.key] }
+                        });
+                      }}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] ${
                         worker.permissions[p.key]
                           ? 'bg-green-500/20 text-green-400'
                           : 'bg-white/5 text-white/30'
                       }`}
                     >
-                      {p.icon}
-                      {p.label}
-                    </span>
+                      {p.icon} {p.label}
+                    </button>
                   ))}
                 </div>
 
                 <button
-                  onClick={() => toggleLogs(worker.id)}
-                  className="p-2 rounded-xl glass-button text-white/50 hover:text-white"
+                  onClick={() => removeWorker(worker.id)}
+                  className="p-2 rounded-xl glass-button text-red-400/50 hover:text-red-400"
                 >
-                  <Eye size={16} />
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (confirm(`Удалить работника ${worker.username}?`)) {
-                      removeWorker(worker.id);
-                    }
-                  }}
-                  className="p-2 rounded-xl glass-button text-white/50 hover:text-red-400"
-                >
-                  <Trash2 size={16} />
+                  <Trash2 size={14} />
                 </button>
               </div>
 
               {/* Assigned accounts */}
-              <div className="px-4 pb-3 border-t border-white/5 pt-3">
-                <div className="text-[10px] text-white/40 mb-2">Назначенные аккаунты:</div>
-                <div className="flex flex-wrap gap-2">
+              <div>
+                <div className="text-xs text-white/50 mb-2">Назначенные аккаунты:</div>
+                <div className="flex flex-wrap gap-1">
                   {accounts.map(acc => (
                     <button
                       key={acc.id}
                       onClick={() => toggleAccountAssignment(worker.id, acc.id, worker.assignedAccounts)}
-                      className={`text-[10px] px-2 py-1 rounded-lg transition-colors ${
+                      className={`px-2 py-1 rounded-lg text-[10px] ${
                         worker.assignedAccounts.includes(acc.id)
                           ? 'glass-accent text-white'
-                          : 'glass-button text-white/40'
+                          : 'glass-button text-white/30'
                       }`}
                     >
                       {acc.avatar} {acc.login}
@@ -231,22 +207,34 @@ export default function Workers() {
                 </div>
               </div>
 
-              {/* Action log */}
+              {/* Action log toggle */}
+              <button
+                onClick={() => {
+                  const newSet = new Set(expandedLogs);
+                  if (newSet.has(worker.id)) newSet.delete(worker.id);
+                  else newSet.add(worker.id);
+                  setExpandedLogs(newSet);
+                }}
+                className="text-xs text-white/40 hover:text-white/60 flex items-center gap-1"
+              >
+                {expandedLogs.has(worker.id) ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                📋 Лог действий ({worker.actionsLog.length})
+              </button>
+
               {expandedLogs.has(worker.id) && (
-                <div className="border-t border-white/5 p-4 animate-fade-in">
-                  <h4 className="text-xs font-medium text-white mb-2">📋 Лог действий</h4>
+                <div className="glass-light rounded-xl p-3">
                   {worker.actionsLog.length === 0 ? (
-                    <div className="text-xs text-white/30 text-center py-4">Нет действий</div>
+                    <div className="text-xs text-white/30 text-center">Нет действий</div>
                   ) : (
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                    <div className="space-y-1">
                       {worker.actionsLog.map(action => {
-                        const acc = accounts.find(a => a.id === action.accountId);
+                        const actAcc = accounts.find(a => a.id === action.accountId);
                         return (
-                          <div key={action.id} className="flex items-center gap-3 p-2 rounded-lg glass-light text-[11px]">
-                            <span className="text-white/40 shrink-0">{formatTime(action.timestamp)}</span>
-                            <span className="text-blue-400 shrink-0">{acc?.login}</span>
-                            <span className="text-white/80">{action.action}</span>
-                            <span className="text-white/40 ml-auto">{action.details}</span>
+                          <div key={action.id} className="flex items-center gap-3 text-[10px] text-white/50">
+                            <span>{formatTime(action.timestamp)}</span>
+                            <span className="text-blue-400">{actAcc?.login}</span>
+                            <span className="text-white/70">{action.action}</span>
+                            <span>{action.details}</span>
                           </div>
                         );
                       })}
