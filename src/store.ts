@@ -14,7 +14,6 @@ interface AppStore {
   updateWorker: (id: string, data: Partial<Worker>) => void;
   removeWorker: (id: string) => void;
   loadWorkers: () => void;
-
   accounts: SteamAccount[];
   addAccount: (login: string, password: string, maFile?: MaFile) => void;
   addAccounts: (accountsData: { login: string; password: string; maFile?: MaFile }[]) => void;
@@ -22,31 +21,26 @@ interface AppStore {
   updateAccount: (id: string, data: Partial<SteamAccount>) => void;
   clearAccounts: () => void;
   getVisibleAccounts: () => SteamAccount[];
-
   connectAccount: (id: string) => Promise<void>;
   disconnectAccount: (id: string) => Promise<void>;
   connectAll: () => Promise<void>;
   disconnectAll: () => Promise<void>;
   refreshStatuses: () => Promise<void>;
-
   messages: ChatMessage[];
   addMessage: (message: ChatMessage) => void;
   fetchNewMessages: () => Promise<void>;
   sendMessage: (accountId: string, friendSteamId: string, friendName: string, text: string) => Promise<boolean>;
-
   tradeOffers: TradeOffer[];
-
   domains: DomainConfig[];
   addDomain: (domain: string, target: 'panel' | 'api') => void;
   removeDomain: (id: string) => void;
   updateDomain: (id: string, data: Partial<DomainConfig>) => void;
-
   notificationSettings: NotificationSettings;
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => void;
   notify: (tgMsg: string, discordMsg: string) => Promise<void>;
-
-  startPolling: () => void;
-  stopPolling: () => void;
+  // Steam API key for parser
+  steamApiKey: string;
+  setSteamApiKey: (key: string) => void;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
@@ -77,8 +71,6 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   notifyLogin: true,
 };
 
-let pollingInterval: ReturnType<typeof setInterval> | null = null;
-
 export const useAppStore = create<AppStore>()(
   persist(
     (set, get) => ({
@@ -90,6 +82,9 @@ export const useAppStore = create<AppStore>()(
       tradeOffers: [],
       domains: [],
       notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+      steamApiKey: '',
+
+      setSteamApiKey: (key: string) => set({ steamApiKey: key }),
 
       login: async (username, password) => {
         try {
@@ -117,8 +112,8 @@ export const useAppStore = create<AppStore>()(
                 username: worker.username,
                 role: 'worker',
                 assignedAccounts: worker.assignedAccounts,
-                createdAt: worker.lastActive
-              } as User
+                createdAt: worker.lastActive,
+              } as User,
             });
             return true;
           }
@@ -171,7 +166,9 @@ export const useAppStore = create<AppStore>()(
         const currentUser = get().currentUser;
         const newAccount: SteamAccount = {
           id: generateId(),
-          login, password, maFile,
+          login,
+          password,
+          maFile,
           avatar: avatarEmojis[Math.floor(Math.random() * avatarEmojis.length)],
           displayName: login,
           level: 0,
@@ -179,8 +176,11 @@ export const useAppStore = create<AppStore>()(
           balance: 0,
           guardEnabled: !!maFile,
           server: servers[Math.floor(Math.random() * servers.length)],
-          tradeBan: false, vacBan: false, limited: false,
-          friendsCount: 0, inventoryValue: 0,
+          tradeBan: false,
+          vacBan: false,
+          limited: false,
+          friendsCount: 0,
+          inventoryValue: 0,
           ownerId: currentUser?.id,
         };
         set(state => ({ accounts: [...state.accounts, newAccount] }));
@@ -190,7 +190,9 @@ export const useAppStore = create<AppStore>()(
         const currentUser = get().currentUser;
         const newAccounts: SteamAccount[] = accountsData.map(({ login, password, maFile }) => ({
           id: generateId(),
-          login, password, maFile,
+          login,
+          password,
+          maFile,
           avatar: avatarEmojis[Math.floor(Math.random() * avatarEmojis.length)],
           displayName: login,
           level: 0,
@@ -198,13 +200,14 @@ export const useAppStore = create<AppStore>()(
           balance: 0,
           guardEnabled: !!maFile,
           server: servers[Math.floor(Math.random() * servers.length)],
-          tradeBan: false, vacBan: false, limited: false,
-          friendsCount: 0, inventoryValue: 0,
+          tradeBan: false,
+          vacBan: false,
+          limited: false,
+          friendsCount: 0,
+          inventoryValue: 0,
           ownerId: currentUser?.id,
         }));
         set(state => ({ accounts: [...state.accounts, ...newAccounts] }));
-
-        // Notify
         const ns = get().notificationSettings;
         if (ns.notifyAccountsLoaded) {
           get().notify(
@@ -243,16 +246,13 @@ export const useAppStore = create<AppStore>()(
       connectAccount: async (id) => {
         const acc = get().accounts.find(a => a.id === id);
         if (!acc) return;
-        set(state => ({
-          accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'connecting' as const, errorMessage: undefined } : a)
-        }));
+        set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'connecting' as const, errorMessage: undefined } : a) }));
         try {
           const result = await steamApi.login(id, acc.login, acc.password, acc.maFile?.shared_secret, acc.maFile?.identity_secret);
           if (result.success || result.status === 'online') {
             set(state => ({
               accounts: state.accounts.map(a => a.id === id ? {
-                ...a,
-                status: 'online' as const,
+                ...a, status: 'online' as const,
                 steamId: result.steamId || a.steamId,
                 level: result.level ?? a.level,
                 balance: result.balance ?? a.balance,
@@ -264,32 +264,22 @@ export const useAppStore = create<AppStore>()(
                 vacBan: result.vacBan ?? a.vacBan,
                 limited: result.limited ?? a.limited,
                 errorMessage: undefined,
-              } : a)
+              } : a),
             }));
             const ns = get().notificationSettings;
             if (ns.notifyLogin) {
-              get().notify(
-                NotificationTemplates.accountLogin(acc.login, 'online'),
-                DiscordTemplates.accountLogin(acc.login, 'online')
-              );
+              get().notify(NotificationTemplates.accountLogin(acc.login, 'online'), DiscordTemplates.accountLogin(acc.login, 'online'));
             }
           } else {
             const errMsg = result.error || result.message || 'Ошибка подключения';
-            set(state => ({
-              accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'error' as const, errorMessage: errMsg } : a)
-            }));
+            set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'error' as const, errorMessage: errMsg } : a) }));
             const ns = get().notificationSettings;
             if (ns.notifyErrors) {
-              get().notify(
-                NotificationTemplates.accountError(acc.login, errMsg),
-                DiscordTemplates.accountError(acc.login, errMsg)
-              );
+              get().notify(NotificationTemplates.accountError(acc.login, errMsg), DiscordTemplates.accountError(acc.login, errMsg));
             }
           }
         } catch {
-          set(state => ({
-            accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'error' as const, errorMessage: 'Сервер недоступен' } : a)
-          }));
+          set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'error' as const, errorMessage: 'Сервер недоступен' } : a) }));
         }
       },
 
@@ -318,23 +308,10 @@ export const useAppStore = create<AppStore>()(
             accounts: state.accounts.map(a => {
               const status = statuses[a.id];
               if (status) {
-                return {
-                  ...a,
-                  status: status.status as SteamAccount['status'],
-                  steamId: status.steamId || a.steamId,
-                  friendsCount: status.friendsCount ?? a.friendsCount,
-                  level: status.level ?? a.level,
-                  balance: status.balance ?? a.balance,
-                  inventoryValue: status.inventoryValue ?? a.inventoryValue,
-                  avatarUrl: status.avatarUrl || a.avatarUrl,
-                  displayName: status.displayName || a.displayName,
-                  tradeBan: status.tradeBan ?? a.tradeBan,
-                  vacBan: status.vacBan ?? a.vacBan,
-                  limited: status.limited ?? a.limited,
-                };
+                return { ...a, status: status.status as SteamAccount['status'], steamId: status.steamId || a.steamId, friendsCount: status.friendsCount ?? a.friendsCount, level: status.level ?? a.level, balance: status.balance ?? a.balance, inventoryValue: status.inventoryValue ?? a.inventoryValue, avatarUrl: status.avatarUrl || a.avatarUrl, displayName: status.displayName || a.displayName, tradeBan: status.tradeBan ?? a.tradeBan, vacBan: status.vacBan ?? a.vacBan, limited: status.limited ?? a.limited };
               }
               return a;
-            })
+            }),
           }));
         } catch { /* ignore */ }
       },
@@ -348,17 +325,6 @@ export const useAppStore = create<AppStore>()(
           const newMessages = await steamApi.getMessages();
           if (newMessages.length > 0) {
             set(state => ({ messages: [...state.messages, ...newMessages].slice(-500) }));
-            // Notify about new incoming messages
-            const ns = get().notificationSettings;
-            if (ns.notifyNewMessage) {
-              const incoming = newMessages.filter(m => !m.isOutgoing);
-              for (const msg of incoming) {
-                get().notify(
-                  NotificationTemplates.newMessage(msg.friendName, msg.friendId, msg.text),
-                  DiscordTemplates.newMessage(msg.friendName, msg.friendId, msg.text)
-                );
-              }
-            }
           }
         } catch { /* ignore */ }
       },
@@ -413,18 +379,6 @@ export const useAppStore = create<AppStore>()(
         const ns = get().notificationSettings;
         await sendNotification(ns, tgMsg, discordMsg);
       },
-
-      startPolling: () => {
-        if (pollingInterval) return;
-        pollingInterval = setInterval(async () => {
-          await get().fetchNewMessages();
-          await get().refreshStatuses();
-        }, 3000);
-      },
-
-      stopPolling: () => {
-        if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
-      },
     }),
     {
       name: 'sukacombine-storage',
@@ -434,6 +388,7 @@ export const useAppStore = create<AppStore>()(
         users: state.users,
         domains: state.domains,
         notificationSettings: state.notificationSettings,
+        steamApiKey: state.steamApiKey,
       }),
     }
   )

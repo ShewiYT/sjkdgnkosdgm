@@ -28,6 +28,7 @@ export interface SteamAccount {
   inventoryValue: number;
   errorMessage?: string;
   ownerId?: string;
+  steamApiKey?: string;
 }
 
 export interface MaFile {
@@ -137,21 +138,6 @@ export interface WorkerAction {
   details: string;
 }
 
-export interface MultiChatSettings {
-  autoParseInventory: boolean;
-  parsGames: string[];
-  autoParsesBans: boolean;
-  collapseFriendsOnLoad: boolean;
-  clearChatsOnLoad: boolean;
-  categoryByGame: boolean;
-  compactList: boolean;
-  soundNewMessage: boolean;
-  soundOnline: boolean;
-  soundInGame: boolean;
-  loadMode: 'multi' | 'sequential';
-  loadInterval: number;
-}
-
 export interface DomainConfig {
   id: string;
   domain: string;
@@ -175,6 +161,36 @@ export interface NotificationSettings {
   notifyFriendsEnd: boolean;
   notifyErrors: boolean;
   notifyLogin: boolean;
+}
+
+// Chain Parser Types
+export interface ChainParseResult {
+  steamId: string;
+  displayName: string;
+  avatarUrl: string;
+  inventoryValue: number;
+  itemCount: number;
+  profileUrl: string;
+  depth: number;
+  foundVia: string; // steamId of who led us to this person
+}
+
+export interface ChainParseJob {
+  id: string;
+  status: 'running' | 'completed' | 'cancelled' | 'error';
+  seedIds: string[];
+  minValue: number;
+  maxValue: number;
+  maxDepth: number;
+  targetCount: number;
+  results: ChainParseResult[];
+  scannedCount: number;
+  queueSize: number;
+  currentDepth: number;
+  logs: string[];
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
 }
 
 export type ActiveView = 'dashboard' | 'multichat' | 'browser' | 'offers' | 'spammer' | 'friends' | 'guard' | 'workers' | 'settings' | 'sda' | 'import' | 'domains' | 'notifications' | 'parser';

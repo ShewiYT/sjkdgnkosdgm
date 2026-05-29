@@ -1,18 +1,11 @@
 import { useState } from 'react';
-import { Bell, Send, Save } from 'lucide-react';
+import { Bell, Send } from 'lucide-react';
 import { useAppStore } from '../store';
-import { NotificationTemplates } from '../notifications';
 
 export default function NotificationsView() {
   const { notificationSettings, updateNotificationSettings } = useAppStore();
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [testResult, setTestResult] = useState('');
-
-  const handleSave = () => {
-    // Settings are auto-saved via zustand persist
-    setTestResult('Настройки сохранены!');
-    setTimeout(() => setTestResult(''), 3000);
-  };
 
   const testTelegram = async () => {
     setTestStatus('sending');
@@ -34,7 +27,7 @@ export default function NotificationsView() {
         setTestStatus('error');
         setTestResult(`Telegram ошибка: ${data.description}`);
       }
-    } catch (e) {
+    } catch {
       setTestStatus('error');
       setTestResult('Telegram: ошибка подключения');
     }
@@ -105,7 +98,7 @@ export default function NotificationsView() {
               className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none font-mono"
             />
             <div className="text-[10px] text-white/20 mt-1">
-              Получите токен у @BotFather в Telegram
+              Получите токен у @BotFather
             </div>
           </div>
 
@@ -118,9 +111,6 @@ export default function NotificationsView() {
               placeholder="123456789"
               className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none font-mono"
             />
-            <div className="text-[10px] text-white/20 mt-1">
-              Узнайте свой ID у @userinfobot
-            </div>
           </div>
 
           <button
@@ -160,9 +150,6 @@ export default function NotificationsView() {
               placeholder="https://discord.com/api/webhooks/..."
               className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none font-mono"
             />
-            <div className="text-[10px] text-white/20 mt-1">
-              Настройки канала → Интеграции → Вебхуки → Создать Вебхук
-            </div>
           </div>
 
           <button
@@ -176,9 +163,8 @@ export default function NotificationsView() {
         </div>
       </div>
 
-      {/* Test result */}
       {testResult && (
-        <div className={`glass-card rounded-xl p-3 text-xs ${
+        <div className={`glass-card rounded-xl p-3 text-xs max-w-4xl ${
           testStatus === 'success' ? 'text-green-400 bg-green-500/10' :
           testStatus === 'error' ? 'text-red-400 bg-red-500/10' :
           'text-white/60'
@@ -190,62 +176,25 @@ export default function NotificationsView() {
       {/* Notification types */}
       <div className="glass-card rounded-2xl p-5 space-y-4 max-w-2xl">
         <h3 className="text-sm font-semibold text-white">Какие уведомления отправлять</h3>
-
-        <div className="space-y-3">
+        <div className="space-y-2">
           {[
-            { key: 'notifyAccountsLoaded' as const, label: 'Загрузка аккаунтов', desc: 'Загружены аккаунты в кол-ве: N штук', emoji: '🔄' },
-            { key: 'notifyNewMessage' as const, label: 'Новое сообщение', desc: 'У вас новое сообщение от пользователя (имя)', emoji: '💬' },
-            { key: 'notifyFriendsStart' as const, label: 'Начало добавления в друзья', desc: 'Процесс добавления в друзья начат', emoji: '👥' },
-            { key: 'notifyFriendsEnd' as const, label: 'Конец добавления в друзья', desc: 'Отправлено запросов: N, приняли: N', emoji: '✅' },
-            { key: 'notifyLogin' as const, label: 'Вход в аккаунт', desc: 'Аккаунт залогинился / ошибка входа', emoji: '🔑' },
-            { key: 'notifyErrors' as const, label: 'Ошибки аккаунтов', desc: 'Ошибки подключения, баны и т.д.', emoji: '⚠️' },
+            { key: 'notifyAccountsLoaded' as const, label: 'Загрузка аккаунтов' },
+            { key: 'notifyNewMessage' as const, label: 'Новые сообщения' },
+            { key: 'notifyLogin' as const, label: 'Вход в аккаунт' },
+            { key: 'notifyErrors' as const, label: 'Ошибки' },
           ].map(item => (
-            <label key={item.key} className="flex items-start gap-3 cursor-pointer group">
+            <label key={item.key} className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={notificationSettings[item.key]}
                 onChange={e => updateNotificationSettings({ [item.key]: e.target.checked })}
-                className="w-4 h-4 rounded mt-0.5 shrink-0"
+                className="w-4 h-4 rounded"
               />
-              <div>
-                <div className="text-xs text-white group-hover:text-white/80 flex items-center gap-1">
-                  <span>{item.emoji}</span>
-                  {item.label}
-                </div>
-                <div className="text-[10px] text-white/30">{item.desc}</div>
-              </div>
+              <span className="text-sm text-white/70">{item.label}</span>
             </label>
           ))}
         </div>
       </div>
-
-      {/* Example templates */}
-      <div className="glass-card rounded-2xl p-5 space-y-3 max-w-2xl">
-        <h3 className="text-sm font-semibold text-white">Примеры уведомлений</h3>
-        <div className="space-y-2">
-          {[
-            { label: 'Загрузка аккаунтов', msg: NotificationTemplates.accountsLoaded(15) },
-            { label: 'Новое сообщение', msg: NotificationTemplates.newMessage('PlayerOne', '76561198012345678', 'Привет, давай обмен?') },
-            { label: 'Начало добавления в друзья', msg: NotificationTemplates.friendsProcessStart('my_account', 50) },
-            { label: 'Конец добавления в друзья', msg: NotificationTemplates.friendsProcessEnd('my_account', 50, 23) },
-            { label: 'Вход в аккаунт', msg: NotificationTemplates.accountLogin('my_account', 'online') },
-            { label: 'Ошибка аккаунта', msg: NotificationTemplates.accountError('my_account', 'Invalid credentials') },
-          ].map((ex, i) => (
-            <div key={i} className="bg-white/3 rounded-xl p-3">
-              <div className="text-[10px] text-white/40 mb-1">{ex.label}:</div>
-              <div className="text-xs text-white/70 whitespace-pre-line" dangerouslySetInnerHTML={{ __html: ex.msg }} />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <button
-        onClick={handleSave}
-        className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium text-sm hover:opacity-90 transition-opacity"
-      >
-        <Save size={16} />
-        Сохранить настройки
-      </button>
     </div>
   );
 }

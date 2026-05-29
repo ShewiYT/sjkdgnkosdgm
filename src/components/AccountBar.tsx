@@ -13,54 +13,48 @@ export default function AccountBar({ accounts, selectedAccount, onSelectAccount,
   const allOnline = onlineCount === accounts.length && accounts.length > 0;
 
   return (
-    <div className="h-[52px] glass border-b border-white/5 flex items-center px-4 gap-2 shrink-0">
-      <div className="flex items-center gap-2 flex-1 overflow-x-auto">
+    <div className="flex items-center gap-2 px-4 py-2 bg-dark-800/50 border-b border-white/5 overflow-x-auto">
+      <button
+        onClick={() => onSelectAccount(null)}
+        className={`shrink-0 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+          !selectedAccount ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
+        }`}
+      >
+        Все ({accounts.length})
+      </button>
+
+      {accounts.map(acc => (
         <button
-          onClick={() => onSelectAccount(null)}
-          className={`shrink-0 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-            !selectedAccount ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
+          key={acc.id}
+          onClick={() => onSelectAccount(acc)}
+          className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+            selectedAccount?.id === acc.id
+              ? 'bg-white/10 text-white'
+              : 'text-white/40 hover:text-white/60'
           }`}
         >
-          Все ({accounts.length})
+          <span className={`w-1.5 h-1.5 rounded-full ${
+            acc.status === 'online' ? 'bg-green-400' :
+            acc.status === 'in-game' ? 'bg-blue-400' :
+            acc.status === 'connecting' ? 'bg-yellow-400 animate-pulse-dot' :
+            acc.status === 'error' ? 'bg-red-400' :
+            'bg-white/20'
+          }`} />
+          {acc.login}
         </button>
-        {accounts.map(acc => (
-          <button
-            key={acc.id}
-            onClick={() => onSelectAccount(acc)}
-            className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-              selectedAccount?.id === acc.id ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
-            }`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${
-              acc.status === 'online' ? 'bg-green-400' :
-              acc.status === 'in-game' ? 'bg-purple-400' :
-              acc.status === 'connecting' ? 'bg-yellow-400 animate-pulse-dot' :
-              acc.status === 'error' ? 'bg-red-400' :
-              'bg-gray-500'
-            }`} />
-            {acc.avatarUrl ? (
-              <img src={acc.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
-            ) : (
-              <span className="text-sm">{acc.avatar}</span>
-            )}
-            <span className="max-w-[80px] truncate">{acc.login}</span>
-          </button>
-        ))}
-      </div>
+      ))}
 
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-[10px] text-white/30">
-          {onlineCount}/{accounts.length} онлайн
-        </span>
+      <div className="ml-auto shrink-0 flex items-center gap-2">
+        <span className="text-xs text-white/30">{onlineCount}/{accounts.length} онлайн</span>
         <button
           onClick={onConnectAll}
-          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
             allOnline
-              ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-              : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+              ? 'text-red-400/70 hover:text-red-400 hover:bg-red-500/10'
+              : 'text-green-400/70 hover:text-green-400 hover:bg-green-500/10'
           }`}
         >
-          {allOnline ? <PowerOff size={12} /> : <Power size={12} />}
+          {allOnline ? <PowerOff className="w-3 h-3" /> : <Power className="w-3 h-3" />}
           {allOnline ? 'Откл. все' : 'Подкл. все'}
         </button>
       </div>

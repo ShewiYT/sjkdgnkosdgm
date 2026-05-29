@@ -1,209 +1,74 @@
-import { Users, Wifi, Gamepad2, Wallet, Package, UserPlus, ArrowRightLeft, Shield, CheckCircle, XCircle, AlertTriangle, Lock } from 'lucide-react';
-import type { SteamAccount, TradeOffer } from '../types';
+import { useAppStore } from '../store';
+import { Monitor, DollarSign, Users, Shield } from 'lucide-react';
 
-interface DashboardProps {
-  accounts: SteamAccount[];
-  offers: TradeOffer[];
-}
-
-export default function Dashboard({ accounts, offers }: DashboardProps) {
-  const onlineCount = accounts.filter(a => a.status === 'online').length;
-  const inGameCount = accounts.filter(a => a.status === 'in-game').length;
-  const totalBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
-  const totalInvValue = accounts.reduce((sum, a) => sum + a.inventoryValue, 0);
-  const totalFriends = accounts.reduce((sum, a) => sum + a.friendsCount, 0);
-  const pendingOffers = offers.filter(o => o.status === 'pending').length;
+export default function Dashboard() {
+  const accounts = useAppStore(s => s.getVisibleAccounts());
+  const onlineCount = accounts.filter(a => a.status === 'online' || a.status === 'in-game').length;
+  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
+  const totalInventory = accounts.reduce((s, a) => s + a.inventoryValue, 0);
+  const totalFriends = accounts.reduce((s, a) => s + a.friendsCount, 0);
 
   const stats = [
-    { label: 'Аккаунты', value: accounts.length, icon: <Users size={20} />, color: 'from-blue-500/20 to-blue-600/10' },
-    { label: 'Онлайн', value: onlineCount, icon: <Wifi size={20} />, color: 'from-green-500/20 to-green-600/10' },
-    { label: 'В игре', value: inGameCount, icon: <Gamepad2 size={20} />, color: 'from-purple-500/20 to-purple-600/10' },
-    { label: 'Баланс', value: `$${totalBalance.toFixed(2)}`, icon: <Wallet size={20} />, color: 'from-emerald-500/20 to-emerald-600/10' },
-    { label: 'Инвентарь', value: `$${totalInvValue.toFixed(2)}`, icon: <Package size={20} />, color: 'from-violet-500/20 to-violet-600/10' },
-    { label: 'Друзей', value: totalFriends, icon: <UserPlus size={20} />, color: 'from-orange-500/20 to-orange-600/10' },
-    { label: 'Офферы', value: pendingOffers, icon: <ArrowRightLeft size={20} />, color: 'from-yellow-500/20 to-yellow-600/10' },
-    { label: 'Guard', value: accounts.filter(a => a.guardEnabled).length, icon: <Shield size={20} />, color: 'from-cyan-500/20 to-cyan-600/10' },
+    { icon: <Monitor className="w-5 h-5" />, label: 'Онлайн', value: `${onlineCount}/${accounts.length}`, color: 'text-green-400' },
+    { icon: <DollarSign className="w-5 h-5" />, label: 'Баланс', value: `$${totalBalance.toFixed(2)}`, color: 'text-yellow-400' },
+    { icon: <Shield className="w-5 h-5" />, label: 'Инвентарь', value: `$${totalInventory.toFixed(2)}`, color: 'text-blue-400' },
+    { icon: <Users className="w-5 h-5" />, label: 'Друзья', value: totalFriends.toString(), color: 'text-purple-400' },
   ];
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in overflow-y-auto max-h-[calc(100vh-52px)]">
-      {/* Header */}
+    <div className="p-6 space-y-6 overflow-y-auto h-full">
       <div>
-        <h1 className="text-2xl font-semibold text-white">Дашборд</h1>
-        <p className="text-sm text-white/40 mt-1">Общая статистика Suka Team</p>
+        <h2 className="text-lg font-bold flex items-center gap-2">📊 Дашборд</h2>
+        <p className="text-white/40 text-sm">Обзор всех аккаунтов</p>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map((s, i) => (
-          <div key={i} className={`glass-card rounded-2xl p-4 bg-gradient-to-br ${s.color}`}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 rounded-xl bg-white/5">
-                {s.icon}
-              </div>
-            </div>
-            <div className="text-2xl font-bold text-white">{s.value}</div>
-            <div className="text-xs text-white/50">{s.label}</div>
+          <div key={i} className="glass-card rounded-xl p-4 space-y-2">
+            <div className={`${s.color}`}>{s.icon}</div>
+            <div className="text-xl font-bold">{s.value}</div>
+            <div className="text-xs text-white/40">{s.label}</div>
           </div>
         ))}
       </div>
 
-      {/* Accounts Table */}
-      {accounts.length > 0 && (
-        <div className="glass-card rounded-2xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white">Аккаунты</h3>
-            <span className="text-xs text-white/40">{accounts.length} аккаунтов</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-[10px] text-white/40 border-b border-white/5">
-                  <th className="text-left py-2 px-4">Аккаунт</th>
-                  <th className="text-left py-2 px-4">Статус</th>
-                  <th className="text-left py-2 px-4">Уровень</th>
-                  <th className="text-left py-2 px-4">Баланс</th>
-                  <th className="text-left py-2 px-4">Инвентарь</th>
-                  <th className="text-left py-2 px-4">Друзей</th>
-                  <th className="text-left py-2 px-4">Сервер</th>
-                  <th className="text-left py-2 px-4">Guard</th>
-                  <th className="text-left py-2 px-4">Состояние</th>
+      <div className="glass-card rounded-xl overflow-hidden">
+        <div className="p-4 border-b border-white/5">
+          <h3 className="text-sm font-semibold">Аккаунты</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-white/30 border-b border-white/5">
+                <th className="text-left p-3">Логин</th>
+                <th className="text-left p-3">Статус</th>
+                <th className="text-left p-3">Уровень</th>
+                <th className="text-left p-3">Баланс</th>
+                <th className="text-left p-3">Инвентарь</th>
+                <th className="text-left p-3">Друзья</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map(acc => (
+                <tr key={acc.id} className="border-b border-white/5 hover:bg-white/5">
+                  <td className="p-3">{acc.displayName || acc.login}</td>
+                  <td className="p-3">
+                    <span className={`px-2 py-0.5 rounded text-[10px] ${
+                      acc.status === 'online' ? 'bg-green-500/20 text-green-400' :
+                      acc.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                      'bg-white/10 text-white/40'
+                    }`}>
+                      {acc.status}
+                    </span>
+                  </td>
+                  <td className="p-3">{acc.level}</td>
+                  <td className="p-3">${acc.balance.toFixed(2)}</td>
+                  <td className="p-3">${acc.inventoryValue.toFixed(2)}</td>
+                  <td className="p-3">{acc.friendsCount}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {accounts.map(acc => (
-                  <tr key={acc.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                    <td className="py-2.5 px-4">
-                      <div className="flex items-center gap-2">
-                        {acc.avatarUrl ? (
-                          <img src={acc.avatarUrl} alt="" className="w-6 h-6 rounded-full" />
-                        ) : (
-                          <span className="text-lg">{acc.avatar}</span>
-                        )}
-                        <div>
-                          <span className="text-sm text-white">{acc.displayName || acc.login}</span>
-                          {acc.steamId && (
-                            <div className="text-[10px] text-white/30">{acc.steamId}</div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        acc.status === 'online' ? 'bg-green-500/20 text-green-400' :
-                        acc.status === 'in-game' ? 'bg-purple-500/20 text-purple-400' :
-                        acc.status === 'connecting' ? 'bg-yellow-500/20 text-yellow-400' :
-                        acc.status === 'error' ? 'bg-red-500/20 text-red-400' :
-                        'bg-gray-500/20 text-gray-400'
-                      }`}>
-                        {acc.status === 'online' ? 'Онлайн' :
-                         acc.status === 'in-game' ? acc.game || 'В игре' :
-                         acc.status === 'connecting' ? 'Подключение...' :
-                         acc.status === 'error' ? 'Ошибка' :
-                         'Оффлайн'}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-4 text-sm text-white">{acc.level}</td>
-                    <td className="py-2.5 px-4 text-sm text-white">${acc.balance.toFixed(2)}</td>
-                    <td className="py-2.5 px-4 text-sm text-white">${acc.inventoryValue.toFixed(2)}</td>
-                    <td className="py-2.5 px-4 text-sm text-white">{acc.friendsCount}</td>
-                    <td className="py-2.5 px-4">
-                      <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-400">
-                        {acc.server}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-4">
-                      {acc.guardEnabled ? (
-                        <CheckCircle size={16} className="text-green-400" />
-                      ) : (
-                        <XCircle size={16} className="text-red-400/50" />
-                      )}
-                    </td>
-                    <td className="py-2.5 px-4">
-                      <div className="flex gap-1">
-                        {acc.tradeBan && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">Trade Ban</span>}
-                        {acc.vacBan && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">VAC</span>}
-                        {acc.limited && <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400">Limited</span>}
-                        {!acc.tradeBan && !acc.vacBan && !acc.limited && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">Clean</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Recent offers */}
-        <div className="glass-card rounded-2xl p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-white mb-3">
-            <ArrowRightLeft size={16} />
-            Последние офферы
-          </div>
-          {offers.length > 0 ? (
-            <div className="space-y-2">
-              {offers.slice(0, 4).map(o => (
-                <div key={o.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{o.partnerAvatar}</span>
-                    <div>
-                      <span className="text-xs text-white">{o.partnerName}</span>
-                      <div className="text-[10px] text-white/30">
-                        {o.itemsGive.length} → {o.itemsReceive.length} предметов
-                      </div>
-                    </div>
-                  </div>
-                  <span className={`text-[10px] px-2 py-1 rounded-full ${
-                    o.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                    o.status === 'accepted' ? 'bg-green-500/20 text-green-400' :
-                    'bg-red-500/20 text-red-400'
-                  }`}>
-                    {o.status === 'pending' ? 'Ожидает' : o.status === 'accepted' ? 'Принят' : 'Отклонен'}
-                  </span>
-                </div>
               ))}
-            </div>
-          ) : (
-            <div className="text-xs text-white/30 text-center py-4">Нет офферов</div>
-          )}
-        </div>
-
-        {/* Warnings */}
-        <div className="glass-card rounded-2xl p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-white mb-3">
-            <AlertTriangle size={16} />
-            Предупреждения
-          </div>
-          <div className="space-y-2">
-            {accounts.filter(a => a.tradeBan || a.vacBan || a.limited || a.status === 'error').length > 0 ? (
-              accounts.filter(a => a.tradeBan || a.vacBan || a.limited || a.status === 'error').map(a => (
-                <div key={a.id} className="flex items-center gap-2 py-1.5">
-                  <span className="text-lg">{a.avatar}</span>
-                  <div>
-                    <span className="text-xs text-white">{a.login}</span>
-                    <div className="text-[10px] text-red-400/70">
-                      {a.errorMessage || [a.tradeBan && 'Trade Ban', a.vacBan && 'VAC Ban', a.limited && 'Limited'].filter(Boolean).join(', ')}
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-xs text-white/30 text-center py-4">Все аккаунты в порядке ✨</div>
-            )}
-            {accounts.filter(a => !a.guardEnabled).length > 0 && (
-              <div className="flex items-center gap-2 mt-2 text-yellow-400/70">
-                <Lock size={12} />
-                <span className="text-[10px]">
-                  {accounts.filter(a => !a.guardEnabled).length} аккаунтов без Guard
-                </span>
-              </div>
-            )}
-          </div>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

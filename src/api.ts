@@ -1,4 +1,3 @@
-// Steam API client
 const API_BASE = '/api/steam';
 
 export interface LoginResponse {
@@ -132,70 +131,6 @@ export const steamApi = {
     }
   },
 
-  async openBrowser(accountId: string, url: string): Promise<any> {
-    try {
-      const res = await fetch(`${API_BASE}/browser/open`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId, url }),
-      });
-      return await res.json();
-    } catch {
-      return { error: 'Network error' };
-    }
-  },
-
-  async navigateBrowser(accountId: string, url: string): Promise<any> {
-    try {
-      const res = await fetch(`${API_BASE}/browser/navigate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId, url }),
-      });
-      return await res.json();
-    } catch {
-      return { error: 'Network error' };
-    }
-  },
-
-  async getBrowserScreenshot(accountId: string): Promise<string | null> {
-    try {
-      const res = await fetch(`${API_BASE}/browser/screenshot/${accountId}`);
-      const data = await res.json();
-      return data.screenshot || null;
-    } catch {
-      return null;
-    }
-  },
-
-  async getBrowserPage(accountId: string): Promise<any> {
-    try {
-      const res = await fetch(`${API_BASE}/browser/page/${accountId}`);
-      return await res.json();
-    } catch {
-      return { error: 'Network error' };
-    }
-  },
-
-  async closeBrowser(accountId: string): Promise<void> {
-    try {
-      await fetch(`${API_BASE}/browser/close`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId }),
-      });
-    } catch { /* ignore */ }
-  },
-
-  async getVpsInfo(): Promise<any> {
-    try {
-      const res = await fetch('/api/vps/info');
-      return await res.json();
-    } catch {
-      return null;
-    }
-  },
-
   async addDomain(domain: string, target: 'panel' | 'api'): Promise<any> {
     try {
       const res = await fetch('/api/domains', {
@@ -218,13 +153,21 @@ export const steamApi = {
     }
   },
 
-  // Spam to users with no messages
-  async spamNoMessages(accountId: string, message: string): Promise<any> {
+  // Chain parser API
+  async startChainParse(params: {
+    seedIds: string[];
+    apiKey: string;
+    minValue: number;
+    maxValue: number;
+    maxDepth: number;
+    targetCount: number;
+    appId: number;
+  }): Promise<any> {
     try {
-      const res = await fetch(`${API_BASE}/spam-no-messages`, {
+      const res = await fetch('/api/parser/chain/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId, message }),
+        body: JSON.stringify(params),
       });
       return await res.json();
     } catch {
@@ -232,18 +175,21 @@ export const steamApi = {
     }
   },
 
-  // Translate text
-  async translate(text: string, targetLang: string): Promise<string> {
+  async getChainParseStatus(jobId: string): Promise<any> {
     try {
-      const res = await fetch(`/api/translate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, targetLang }),
-      });
-      const data = await res.json();
-      return data.translatedText || text;
+      const res = await fetch(`/api/parser/chain/status/${jobId}`);
+      return await res.json();
     } catch {
-      return text;
+      return { error: 'Network error' };
+    }
+  },
+
+  async cancelChainParse(jobId: string): Promise<any> {
+    try {
+      const res = await fetch(`/api/parser/chain/cancel/${jobId}`, { method: 'POST' });
+      return await res.json();
+    } catch {
+      return { error: 'Network error' };
     }
   },
 };

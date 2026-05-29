@@ -54,7 +54,7 @@ export default function App() {
       case 'import':
         return <ImportAccounts />;
       case 'dashboard':
-        return <Dashboard accounts={accounts} offers={tradeOffers} />;
+        return <Dashboard />;
       case 'multichat':
         return <MultiChat accounts={accounts} />;
       case 'browser':
@@ -74,18 +74,18 @@ export default function App() {
       case 'notifications':
         return <NotificationsView />;
       case 'domains':
-        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/30">Нет доступа</div>;
+        return isAdmin ? <DomainsView /> : <div className="flex items-center justify-center h-full text-white/30">Нет доступа</div>;
       case 'workers':
-        return isAdmin ? <Workers accounts={accounts} /> : <div className="p-6 text-white/30">Нет доступа</div>;
+        return isAdmin ? <Workers accounts={accounts} /> : <div className="flex items-center justify-center h-full text-white/30">Нет доступа</div>;
       case 'settings':
         return <SettingsView />;
       default:
-        return <Dashboard accounts={accounts} offers={tradeOffers} />;
+        return <Dashboard />;
     }
   };
 
   return (
-    <div className="flex h-screen bg-[#0a0a0f]">
+    <div className="flex h-screen bg-dark-900">
       <Sidebar
         activeView={activeView}
         setActiveView={setActiveView}
