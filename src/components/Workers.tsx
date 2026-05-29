@@ -135,7 +135,10 @@ export default function Workers({ accounts }: WorkersProps) {
                 {worker.assignedAccounts.map(accId => {
                   const acc = accounts.find(a => a.id === accId);
                   return acc ? (
-                    <span key={accId} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/50">
+                    <span
+                      key={accId}
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/50"
+                    >
                       {acc.login}
                     </span>
                   ) : null;

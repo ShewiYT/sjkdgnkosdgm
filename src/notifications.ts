@@ -3,15 +3,18 @@ import type { NotificationSettings } from './types';
 async function sendTelegram(settings: NotificationSettings, message: string): Promise<boolean> {
   if (!settings.enableTelegram || !settings.telegramBotToken || !settings.telegramAdminId) return false;
   try {
-    const res = await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: settings.telegramAdminId,
-        text: message,
-        parse_mode: 'HTML',
-      }),
-    });
+    const res = await fetch(
+      `https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: settings.telegramAdminId,
+          text: message,
+          parse_mode: 'HTML',
+        }),
+      }
+    );
     const data = await res.json();
     return data.ok === true;
   } catch {

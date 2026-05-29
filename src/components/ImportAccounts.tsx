@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Upload, AlertCircle, CheckCircle } from 'lucide-react';
+import { Upload, AlertCircle, CheckCircle, SkipForward } from 'lucide-react';
 import { useAppStore } from '../store';
 import type { MaFile } from '../types';
 
@@ -7,7 +7,11 @@ export default function ImportAccounts() {
   const { addAccounts } = useAppStore();
   const [textInput, setTextInput] = useState('');
   const [maFiles, setMaFiles] = useState<Record<string, MaFile>>({});
-  const [importResult, setImportResult] = useState<{ success: number; errors: string[] } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    success: number;
+    skipped: number;
+    errors: string[];
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const maFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -29,10 +33,21 @@ export default function ImportAccounts() {
       }
     });
 
+    let added = 0;
+    let skipped = 0;
+
     if (accountsData.length > 0) {
-      addAccounts(accountsData);
+      // addAccounts теперь возвращает статистику
+      const result = addAccounts(accountsData) as unknown as { added: number; skipped: number } | undefined;
+      if (result && typeof result === 'object') {
+        added = result.added;
+        skipped = result.skipped;
+      } else {
+        added = accountsData.length;
+      }
     }
-    setImportResult({ success: accountsData.length, errors });
+
+    setImportResult({ success: added, skipped, errors });
     setTextInput('');
   };
 
@@ -67,79 +82,94 @@ export default function ImportAccounts() {
   return (
     <div className="p-6 space-y-6 animate-fade-in overflow-y-auto max-h-[calc(100vh-52px)]">
       <div>
-        <h1 className="text-2xl font-semibold text-white">Импорт аккаунтов</h1>
-        <p className="text-sm text-white/40 mt-1">Добавьте Steam аккаунты в формате login:password</p>
+        <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
+          <Upload size={24} />
+          Импорт аккаунтов
+        </h1>
+        <p className="text-sm text-white/40 mt-1">
+          Добавьте Steam аккаунты в формате login:password
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
-        <div className="glass-card rounded-2xl p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-white">Аккаунты</h3>
-          <textarea
-            value={textInput}
-            onChange={e => setTextInput(e.target.value)}
-            className="w-full glass-input text-xs text-white p-3 rounded-xl outline-none h-48 resize-none font-mono"
-            placeholder={"login1:password1\nlogin2:password2\n..."}
-          />
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={handleImportText}
-              className="glass-btn px-4 py-2 rounded-xl text-xs flex items-center gap-2"
-            >
-              <Upload size={12} /> Импортировать
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="glass-btn px-4 py-2 rounded-xl text-xs"
-            >
-              📂 Из файла
-            </button>
-            <input ref={fileInputRef} type="file" accept=".txt" className="hidden" onChange={handleFileImport} />
-          </div>
-        </div>
-
-        <div className="glass-card rounded-2xl p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-white">🔐 maFiles (опционально)</h3>
-          <p className="text-xs text-white/30">
-            Загрузите .maFile для автоматической авторизации Guard
-          </p>
+      <div className="glass-card rounded-2xl p-5 space-y-4 max-w-2xl">
+        <h3 className="text-sm font-semibold text-white">Аккаунты</h3>
+        <textarea
+          value={textInput}
+          onChange={e => setTextInput(e.target.value)}
+          className="w-full glass-input text-xs text-white p-3 rounded-xl outline-none h-48 resize-none font-mono"
+          placeholder={"login1:password1\nlogin2:password2\n..."}
+        />
+        <div className="flex gap-2 flex-wrap">
           <button
-            onClick={() => maFileInputRef.current?.click()}
+            onClick={handleImportText}
+            disabled={!textInput.trim()}
+            className="glass-btn px-4 py-2 rounded-xl text-xs disabled:opacity-40"
+          >
+            Импортировать
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
             className="glass-btn px-4 py-2 rounded-xl text-xs"
           >
-            📂 Загрузить maFiles
+            📂 Из файла
           </button>
-          <input
-            ref={maFileInputRef}
-            type="file"
-            accept=".maFile,.json"
-            multiple
-            className="hidden"
-            onChange={handleMaFileImport}
-          />
-          {Object.keys(maFiles).length > 0 && (
-            <div className="text-xs text-green-400">
-              ✅ Загружено: {Object.keys(maFiles).length} файлов
-            </div>
-          )}
-
-          {importResult && (
-            <div className="space-y-2 mt-3">
-              {importResult.success > 0 && (
-                <div className="flex items-center gap-2 text-xs text-green-400">
-                  <CheckCircle size={12} />
-                  Добавлено: {importResult.success} аккаунтов
-                </div>
-              )}
-              {importResult.errors.map((err, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs text-red-400">
-                  <AlertCircle size={12} />
-                  {err}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
+        <input ref={fileInputRef} type="file" accept=".txt" className="hidden" onChange={handleFileImport} />
       </div>
+
+      <div className="glass-card rounded-2xl p-5 space-y-4 max-w-2xl">
+        <h3 className="text-sm font-semibold text-white">🔐 maFiles (опционально)</h3>
+        <p className="text-xs text-white/40">
+          Загрузите .maFile для автоматической авторизации Guard
+        </p>
+        <button
+          onClick={() => maFileInputRef.current?.click()}
+          className="glass-btn px-4 py-2 rounded-xl text-xs"
+        >
+          📂 Загрузить maFiles
+        </button>
+        <input
+          ref={maFileInputRef}
+          type="file"
+          accept=".maFile"
+          multiple
+          className="hidden"
+          onChange={handleMaFileImport}
+        />
+        {Object.keys(maFiles).length > 0 && (
+          <div className="text-xs text-green-400">
+            ✅ Загружено: {Object.keys(maFiles).length} файлов
+          </div>
+        )}
+      </div>
+
+      {importResult && (
+        <div className="glass-card rounded-2xl p-4 space-y-2 max-w-2xl">
+          {importResult.success > 0 && (
+            <div className="flex items-center gap-2 text-green-400 text-sm">
+              <CheckCircle size={14} />
+              Добавлено: {importResult.success} аккаунтов
+            </div>
+          )}
+          {importResult.skipped > 0 && (
+            <div className="flex items-center gap-2 text-yellow-400 text-sm">
+              <SkipForward size={14} />
+              Пропущено дубликатов: {importResult.skipped} аккаунтов
+            </div>
+          )}
+          {importResult.success === 0 && importResult.skipped === 0 && (
+            <div className="flex items-center gap-2 text-white/40 text-sm">
+              Нечего добавлять
+            </div>
+          )}
+          {importResult.errors.map((err, i) => (
+            <div key={i} className="flex items-center gap-2 text-red-400 text-xs">
+              <AlertCircle size={12} />
+              {err}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -74,12 +74,12 @@ export default function DomainsView() {
                   <div className="text-sm text-white font-medium">{domain.domain}</div>
                   <div className="text-[10px] text-white/30">
                     {domain.target === 'panel' ? 'Панель' : 'API'} •{' '}
-                    {domain.ssl ? ' SSL ✓' : ' Без SSL'} •{' '}
+                    {domain.ssl ? 'SSL ✓' : 'Без SSL'} •{' '}
                     {domain.status === 'active'
-                      ? ' Активен'
+                      ? 'Активен'
                       : domain.status === 'error'
-                      ? ' Ошибка'
-                      : ' Ожидание'}
+                      ? 'Ошибка'
+                      : 'Ожидание'}
                   </div>
                 </div>
               </div>

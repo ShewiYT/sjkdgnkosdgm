@@ -213,10 +213,8 @@ export const steamApi = {
     }
   },
 
-  // ─── Inventory value via Steam Market API ───────────────────────────────────
   async getInventoryValue(steamId: string, _steamApiKey: string): Promise<number> {
     try {
-      // Fetch inventory (CS2 appid=730, contextid=2)
       const invRes = await fetch(
         `https://steamcommunity.com/inventory/${steamId}/730/2?l=english&count=500`,
         { headers: { 'Accept': 'application/json' } }
@@ -236,7 +234,6 @@ export const steamApi = {
         }
       }
 
-      // Sample up to 15 items to estimate total
       const sample = assets.slice(0, 15);
       let totalSampled = 0;
       let pricedCount = 0;
@@ -332,7 +329,7 @@ export const parserApi = {
     }
   },
 
-  async getParserResults(jobId: string): Promise<{ results: unknown[]; total: number }> {
+  async getParserResults(jobId: string): Promise<{ results: ParserJob['results']; total: number }> {
     try {
       const res = await fetch(`/api/parser/results/${jobId}`);
       return await res.json();

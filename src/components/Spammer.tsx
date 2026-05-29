@@ -35,8 +35,8 @@ export default function Spammer({ accounts }: SpammerProps) {
       <div className="flex items-start gap-2 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
         <AlertTriangle size={16} className="text-yellow-400 mt-0.5 shrink-0" />
         <div className="text-xs text-yellow-300/80">
-          Спамер отправляет сообщения только тем друзьям, с которыми нет переписки.
-          Все онлайн аккаунты участвуют автоматически.
+          Спамер отправляет сообщения только тем друзьям, с которыми нет переписки. Все онлайн
+          аккаунты участвуют автоматически.
         </div>
       </div>
 
@@ -83,9 +83,7 @@ export default function Spammer({ accounts }: SpammerProps) {
             <input
               type="number"
               value={spammerDelay}
-              onChange={e =>
-                setSpammerDelay(Math.max(1, Math.min(60, parseInt(e.target.value) || 3)))
-              }
+              onChange={e => setSpammerDelay(Math.max(1, Math.min(60, parseInt(e.target.value) || 3)))}
               disabled={spammerRunning}
               min={1}
               max={60}
@@ -152,9 +150,7 @@ export default function Spammer({ accounts }: SpammerProps) {
                         {' → '}
                         <span>{log.friendName}</span>
                       </div>
-                      {log.error && (
-                        <div className="text-[10px] text-red-400">{log.error}</div>
-                      )}
+                      {log.error && <div className="text-[10px] text-red-400">{log.error}</div>}
                     </div>
                     <div className="text-[9px] text-white/20 shrink-0">
                       {new Date(log.timestamp).toLocaleTimeString('ru', {

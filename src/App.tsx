@@ -98,7 +98,7 @@ export default function App() {
           <div className="p-6 text-white/40">Нет доступа</div>
         );
       case 'settings':
-        return <SettingsView />;
+        return <SettingsView accounts={accounts} />;
       default:
         return <Dashboard accounts={accounts} />;
     }
@@ -116,7 +116,7 @@ export default function App() {
         username={currentUser.username}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden">
         <AccountBar
           accounts={accounts}
           selectedAccount={selectedAccount}
@@ -124,7 +124,10 @@ export default function App() {
           onConnectAll={handleConnectAll}
           onlineCount={onlineCount}
         />
-        <div className="flex-1 overflow-hidden">{renderView()}</div>
+
+        <div className="flex-1 overflow-hidden">
+          {renderView()}
+        </div>
       </div>
     </div>
   );

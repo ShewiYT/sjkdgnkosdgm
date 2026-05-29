@@ -35,7 +35,8 @@ export default function Offers({ accounts, offers }: OffersProps) {
                     <div>
                       <div className="text-sm text-white font-medium">{offer.partnerName}</div>
                       <div className="text-[10px] text-white/30">
-                        {acc ? `через ${acc.login}` : ''} • {new Date(offer.timestamp).toLocaleString('ru')}
+                        {acc ? `через ${acc.login}` : ''} •{' '}
+                        {new Date(offer.timestamp).toLocaleString('ru')}
                       </div>
                     </div>
                   </div>
@@ -72,7 +73,10 @@ export default function Offers({ accounts, offers }: OffersProps) {
                     </div>
                     <div className="space-y-1 max-h-32 overflow-y-auto">
                       {offer.itemsGive.map(item => (
-                        <div key={item.id} className="text-xs text-white/60 bg-red-500/5 px-2 py-1 rounded">
+                        <div
+                          key={item.id}
+                          className="text-xs text-white/60 bg-red-500/5 px-2 py-1 rounded"
+                        >
                           {item.name}{' '}
                           {item.price > 0 && (
                             <span className="text-white/30">${item.price.toFixed(2)}</span>

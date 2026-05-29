@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Search, Send, DollarSign, RefreshCw } from 'lucide-react';
+import { MessageSquare, Search, Send, Package } from 'lucide-react';
 import { useAppStore } from '../store';
 import { steamApi } from '../api';
-import type { SteamAccount } from '../types';
+import type { SteamAccount, ChatMessage } from '../types';
 import type { FriendData } from '../api';
+
+const STEAM_API_KEY = '5E2360739CA18D2898E957F7936DA9AE';
 
 interface MultiChatProps {
   accounts: SteamAccount[];
@@ -22,8 +24,6 @@ interface Conversation {
   inventoryValue?: number;
 }
 
-const STEAM_API_KEY = '5E2360739CA18D2898E957F7936DA9AE';
-
 export default function MultiChat({ accounts, selectedAccount }: MultiChatProps) {
   const { messages, sendMessage, fetchNewMessages, steamMarketApiKey } = useAppStore();
   const [friends, setFriends] = useState<FriendData[]>([]);
@@ -31,7 +31,9 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [inventoryValues, setInventoryValues] = useState<Record<string, { value: number; loading: boolean }>>({});
+  const [inventoryValues, setInventoryValues] = useState<
+    Record<string, { value: number; loading: boolean }>
+  >({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const onlineAccounts = accounts.filter(a => a.status === 'online' || a.status === 'in-game');
@@ -88,7 +90,7 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
     c.friendName.toLowerCase().includes(search.toLowerCase())
   );
 
-  const conversationMessages = selectedConversation
+  const conversationMessages: ChatMessage[] = selectedConversation
     ? messages.filter(
         m =>
           m.accountId === selectedConversation.accountId &&
@@ -118,16 +120,16 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
     : undefined;
 
   return (
-    <div className="flex h-[calc(100vh-52px)]">
+    <div className="flex h-full overflow-hidden">
       {/* Friends list */}
-      <div className="w-72 border-r border-white/5 flex flex-col">
+      <div className="w-64 flex flex-col border-r border-white/5 shrink-0">
         <div className="p-3 border-b border-white/5 space-y-2">
           <div className="flex items-center gap-2">
-            <MessageSquare size={16} className="text-indigo-400" />
+            <MessageSquare size={16} className="text-white/40" />
             <span className="text-sm font-semibold text-white">Мультичат</span>
           </div>
           <div className="relative">
-            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -137,37 +139,41 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
           </div>
         </div>
 
-        <div className="text-[10px] text-white/30 px-3 py-1">{filteredConversations.length} друзей</div>
+        <div className="text-[10px] text-white/20 px-3 py-1">
+          {filteredConversations.length} друзей
+        </div>
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="text-center p-8 text-xs text-white/30">Загрузка...</div>
+            <div className="p-4 text-center text-xs text-white/30">Загрузка...</div>
           ) : filteredConversations.length === 0 ? (
-            <div className="text-center p-8 text-xs text-white/30">
-              <MessageSquare size={24} className="mx-auto mb-2 opacity-30" />
-              Нет друзей
+            <div className="p-8 text-center">
+              <MessageSquare size={32} className="mx-auto mb-2 text-white/10" />
+              <div className="text-xs text-white/30">Нет друзей</div>
             </div>
           ) : (
             filteredConversations.map(conv => (
               <button
-                key={conv.friendId}
+                key={`${conv.accountId}-${conv.friendId}`}
                 onClick={() => setSelectedConversation(conv)}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 hover:bg-white/5 transition-colors text-left ${
-                  selectedConversation?.friendId === conv.friendId ? 'bg-white/5' : ''
+                className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${
+                  selectedConversation?.friendId === conv.friendId
+                    ? 'bg-white/10'
+                    : 'hover:bg-white/5'
                 }`}
               >
-                {conv.friendAvatarUrl && conv.friendAvatarUrl.includes('http') ? (
+                {conv.friendAvatarUrl ? (
                   <img src={conv.friendAvatarUrl} alt="" className="w-8 h-8 rounded-full shrink-0" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-sm shrink-0">
+                  <span className="w-8 h-8 flex items-center justify-center text-base shrink-0">
                     👤
-                  </div>
+                  </span>
                 )}
-                <div className="min-w-0 flex-1">
+                <div className="flex-1 min-w-0">
                   <div className="text-xs text-white truncate">{conv.friendName}</div>
-                  <div className="text-[10px] text-white/30 truncate">
-                    {conv.lastMessage || 'Нет сообщений'}
-                  </div>
+                  {conv.lastMessage && (
+                    <div className="text-[10px] text-white/30 truncate">{conv.lastMessage}</div>
+                  )}
                 </div>
               </button>
             ))
@@ -176,10 +182,10 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
       </div>
 
       {/* Chat area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {selectedConversation ? (
           <>
-            {/* Chat header with inventory */}
+            {/* Chat header */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
               {selectedConversation.friendAvatarUrl ? (
                 <img
@@ -191,21 +197,21 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
                 <span className="text-xl">👤</span>
               )}
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-white">{selectedConversation.friendName}</div>
+                <div className="text-sm text-white font-medium">{selectedConversation.friendName}</div>
                 <div className="text-[10px] text-white/30">
                   через {selectedConversation.accountLogin} • {selectedConversation.friendId}
                 </div>
               </div>
 
               {/* Inventory value block */}
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-2">
                 {selectedInventory ? (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-green-500/10 border border-green-500/20">
-                    <DollarSign size={12} className="text-green-400" />
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <Package size={12} className="text-blue-400" />
                     {selectedInventory.loading ? (
-                      <span className="text-xs text-white/40 animate-pulse">Загрузка...</span>
+                      <span className="text-white/30">Загрузка...</span>
                     ) : (
-                      <span className="text-xs text-green-400 font-semibold">
+                      <span className="text-green-400 font-medium">
                         ${selectedInventory.value.toFixed(2)}
                       </span>
                     )}
@@ -213,12 +219,9 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
                 ) : null}
                 <button
                   onClick={() => fetchInventoryValue(selectedConversation.friendId)}
-                  disabled={selectedInventory?.loading}
-                  title="Загрузить стоимость инвентаря CS2 из Steam Market"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
+                  className="text-[10px] px-2 py-1 rounded-lg bg-white/5 text-white/40 hover:bg-white/10"
                 >
-                  <RefreshCw size={12} className={selectedInventory?.loading ? 'animate-spin' : ''} />
-                  {selectedInventory ? 'Обновить' : 'Инвентарь $'}
+                  💰 Инвентарь
                 </button>
               </div>
             </div>
@@ -226,7 +229,7 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {conversationMessages.length === 0 ? (
-                <div className="text-center text-white/20 text-sm mt-8">
+                <div className="text-center text-xs text-white/20 pt-8">
                   Нет сообщений. Начните диалог!
                 </div>
               ) : (
@@ -236,17 +239,19 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
                     className={`flex items-end gap-2 ${msg.isOutgoing ? 'flex-row-reverse' : ''}`}
                   >
                     {!msg.isOutgoing && (
-                      <span className="text-lg shrink-0">👤</span>
+                      <span className="text-base shrink-0">👤</span>
                     )}
                     <div
                       className={`max-w-xs rounded-2xl px-3 py-2 text-sm ${
                         msg.isOutgoing
-                          ? 'bg-indigo-500/20 text-white'
-                          : 'bg-white/5 text-white'
+                          ? 'bg-indigo-500/30 text-white'
+                          : 'bg-white/5 text-white/80'
                       }`}
                     >
                       <div>{msg.text}</div>
-                      <div className="text-[10px] text-white/30 mt-1">{formatTime(msg.timestamp)}</div>
+                      <div className="text-[10px] text-white/30 mt-0.5 text-right">
+                        {formatTime(msg.timestamp)}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -255,7 +260,7 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
             </div>
 
             {/* Input */}
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-white/5">
+            <div className="flex items-center gap-2 p-3 border-t border-white/5">
               <input
                 value={inputText}
                 onChange={e => setInputText(e.target.value)}
@@ -266,17 +271,17 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
               <button
                 onClick={handleSendMessage}
                 disabled={!inputText.trim()}
-                className="p-3 rounded-xl bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 disabled:opacity-30 transition-colors"
+                className="p-3 rounded-xl bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 transition-colors disabled:opacity-30"
               >
                 <Send size={16} />
               </button>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-white/20">
-            <MessageSquare size={48} className="mb-4 opacity-20" />
-            <div className="text-sm">Выберите диалог</div>
-            <div className="text-xs mt-1 text-white/10">
+          <div className="flex-1 flex flex-col items-center justify-center text-center">
+            <MessageSquare size={48} className="text-white/10 mb-4" />
+            <div className="text-white/30 text-sm">Выберите диалог</div>
+            <div className="text-white/20 text-xs mt-1">
               {conversations.length > 0
                 ? 'Выберите друга слева для начала переписки'
                 : 'Подключите аккаунты для загрузки списка друзей'}

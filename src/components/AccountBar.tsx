@@ -9,6 +9,15 @@ interface AccountBarProps {
   onlineCount: number;
 }
 
+const statusDot: Record<string, string> = {
+  online: 'bg-green-400',
+  'in-game': 'bg-blue-400',
+  away: 'bg-yellow-400',
+  connecting: 'bg-yellow-400 animate-pulse',
+  error: 'bg-red-400',
+  offline: 'bg-gray-500',
+};
+
 export default function AccountBar({
   accounts,
   selectedAccount,
@@ -19,7 +28,7 @@ export default function AccountBar({
   const allOnline = onlineCount === accounts.length && accounts.length > 0;
 
   return (
-    <div className="flex items-center gap-1 px-3 h-[52px] bg-dark-800 border-b border-white/5 overflow-x-auto">
+    <div className="flex items-center gap-2 px-4 h-[52px] border-b border-white/5 bg-dark-900/50 overflow-x-auto shrink-0">
       <button
         onClick={() => onSelectAccount(null)}
         className={`shrink-0 px-3 py-1.5 rounded-lg text-xs transition-colors ${
@@ -39,22 +48,12 @@ export default function AccountBar({
               : 'text-white/40 hover:text-white/60'
           }`}
         >
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              acc.status === 'online' || acc.status === 'in-game'
-                ? 'bg-green-400'
-                : acc.status === 'error'
-                ? 'bg-red-400'
-                : acc.status === 'connecting'
-                ? 'bg-yellow-400 animate-pulse'
-                : 'bg-gray-500'
-            }`}
-          />
+          <span className={`w-1.5 h-1.5 rounded-full ${statusDot[acc.status] || 'bg-gray-500'}`} />
           {acc.login}
         </button>
       ))}
 
-      <div className="ml-auto shrink-0 flex items-center gap-2">
+      <div className="ml-auto shrink-0 flex items-center gap-3">
         <span className="text-xs text-white/30">
           {onlineCount}/{accounts.length} онлайн
         </span>

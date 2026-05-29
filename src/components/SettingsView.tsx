@@ -1,41 +1,34 @@
-import { Settings, Download, Trash2, Database, Key } from 'lucide-react';
+import { useState } from 'react';
+import { Settings, Key, Trash2, Database, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../store';
+import type { SteamAccount } from '../types';
 
-export default function SettingsView() {
-  const { accounts, clearAccounts, steamMarketApiKey, setSteamMarketApiKey, fetchInventoryValues } =
-    useAppStore();
+interface SettingsViewProps {
+  accounts: SteamAccount[];
+}
 
-  const exportData = () => {
-    const data = {
-      accounts: accounts.map(a => ({
-        login: a.login,
-        password: a.password,
-        steamId: a.steamId,
-        level: a.level,
-        balance: a.balance,
-        inventoryValue: a.inventoryValue,
-        guardEnabled: a.guardEnabled,
-      })),
-      exportDate: new Date().toISOString(),
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `sukacombine_export_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+export default function SettingsView({ accounts }: SettingsViewProps) {
+  const { steamMarketApiKey, setSteamMarketApiKey, clearAccounts, fetchInventoryValues } = useAppStore();
+  const [clearing, setClearing] = useState(false);
+  const [fetchingInventory, setFetchingInventory] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const handleClear = async () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      setTimeout(() => setConfirmClear(false), 5000);
+      return;
+    }
+    setClearing(true);
+    clearAccounts();
+    setClearing(false);
+    setConfirmClear(false);
   };
 
-  const exportAccounts = () => {
-    const text = accounts.map(a => `${a.login}:${a.password}`).join('\n');
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `accounts_${new Date().toISOString().split('T')[0]}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleFetchInventory = async () => {
+    setFetchingInventory(true);
+    await fetchInventoryValues();
+    setFetchingInventory(false);
   };
 
   return (
@@ -50,91 +43,74 @@ export default function SettingsView() {
 
       <div className="space-y-4 max-w-2xl">
         {/* Steam Market API key */}
-        <div className="glass-card rounded-2xl p-4 space-y-3">
+        <div className="glass-card rounded-2xl p-5 space-y-3">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Key size={16} className="text-indigo-400" />
+            <Key size={16} />
             Steam Market API Key
           </h3>
-          <p className="text-xs text-white/30">
+          <p className="text-xs text-white/40">
             Используется для получения стоимости инвентаря в мультичате и дашборде.
           </p>
           <input
-            type="text"
             value={steamMarketApiKey}
             onChange={e => setSteamMarketApiKey(e.target.value)}
             placeholder="5E2360739CA18D2898E957F7936DA9AE"
             className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none font-mono"
           />
           <button
-            onClick={fetchInventoryValues}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-400 text-xs hover:bg-indigo-500/30 transition-colors"
+            onClick={handleFetchInventory}
+            disabled={fetchingInventory || accounts.filter(a => a.status === 'online' || a.status === 'in-game').length === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/20 text-blue-400 text-xs hover:bg-blue-500/30 transition-colors disabled:opacity-30"
           >
-            🔄 Обновить стоимость инвентарей (онлайн аккаунты)
+            {fetchingInventory ? '⏳ Загрузка...' : '💰 Загрузить стоимость инвентарей'}
           </button>
         </div>
 
-        <div className="glass-card rounded-2xl p-4 space-y-3">
+        {/* SQLite info */}
+        <div className="glass-card rounded-2xl p-5 space-y-3">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             <Database size={16} />
-            Данные
-          </h3>
-
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={exportData}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-white/60 text-xs hover:bg-white/10 transition-colors"
-            >
-              <Download size={14} /> Экспорт JSON
-            </button>
-            <button
-              onClick={exportAccounts}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-white/60 text-xs hover:bg-white/10 transition-colors"
-            >
-              <Download size={14} /> Экспорт login:pass
-            </button>
-          </div>
-        </div>
-
-        <div className="glass-card rounded-2xl p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Database size={16} className="text-green-400" />
             База данных SQLite
           </h3>
-          <div className="text-xs text-white/40 space-y-1">
-            <div>
-              📁 Файл: <code className="text-indigo-400">./data/sukacombine.db</code>
-            </div>
-            <div>
-              📊 Таблицы: users, workers, accounts, messages, trade_offers, parser_keys, parse_jobs,
-              settings
-            </div>
+          <div className="space-y-1 text-xs text-white/40">
+            <div>📁 Файл: ./data/sukacombine.db</div>
+            <div>📊 Таблицы: users, workers, accounts, messages, trade_offers, parser_keys, parse_jobs, settings</div>
             <div>⚡ WAL mode для лучшей производительности</div>
             <div>🔄 Автосохранение при каждом изменении</div>
           </div>
-          <div className="text-[10px] text-white/20">
-            Бэкап:{' '}
-            <code>cp ./data/sukacombine.db ./data/backup_$(date +%Y%m%d).db</code>
+          <div className="text-[10px] text-white/20 font-mono bg-white/5 px-3 py-2 rounded-xl">
+            cp ./data/sukacombine.db ./data/backup_$(date +%Y%m%d).db
           </div>
         </div>
 
-        <div className="glass-card rounded-2xl p-4 space-y-3 border border-red-500/10">
-          <h3 className="text-sm font-semibold text-red-400">Опасная зона</h3>
+        {/* Danger zone */}
+        <div className="glass-card rounded-2xl p-5 space-y-3 border border-red-500/20">
+          <h3 className="text-sm font-semibold text-red-400 flex items-center gap-2">
+            <AlertTriangle size={16} />
+            Опасная зона
+          </h3>
+          <p className="text-xs text-white/40">
+            Удаление всех видимых вам аккаунтов. Это действие необратимо.
+          </p>
           <button
-            onClick={() => {
-              if (confirm('Удалить все аккаунты? Это действие нельзя отменить.')) {
-                clearAccounts();
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs hover:bg-red-500/20 transition-colors"
+            onClick={handleClear}
+            disabled={clearing || accounts.length === 0}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-colors disabled:opacity-30 ${
+              confirmClear
+                ? 'bg-red-500/30 text-red-300 border border-red-500/50'
+                : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
+            }`}
           >
-            <Trash2 size={14} /> Очистить все аккаунты
+            <Trash2 size={14} />
+            {confirmClear ? '⚠️ Нажмите ещё раз для подтверждения' : 'Очистить все аккаунты'}
           </button>
         </div>
 
-        <div className="glass-card rounded-2xl p-4">
-          <div className="text-sm text-white font-medium mb-1">SukaCombine v3.0</div>
+        {/* Version info */}
+        <div className="glass-card rounded-2xl p-4 text-center space-y-1">
+          <div className="text-sm font-semibold text-white">SukaCombine v3.0</div>
           <div className="text-xs text-white/30">Steam Panel • SQLite DB • Suka Team</div>
-          <div className="text-[10px] text-white/20 mt-2">
+          <div className="text-xs text-white/20">
             Аккаунтов: {accounts.length} • Онлайн:{' '}
             {accounts.filter(a => a.status === 'online' || a.status === 'in-game').length}
           </div>
