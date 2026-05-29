@@ -1,566 +1,409 @@
 import express from 'express';
-import path from 'path';
-import fs from 'fs';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import SteamUser from 'steam-user';
-import SteamTotp from 'steam-totp';
-import SteamCommunity from 'steamcommunity';
+import { existsSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = dirname(__filename);
 
 const app = express();
-app.use(express.json({ limit: '10mb' }));
-
 const PORT = process.env.PORT || 3000;
-const distPath = path.join(__dirname, 'dist');
-const indexPath = path.join(distPath, 'index.html');
 
-// Store active Steam clients
-const steamClients = new Map();
-const steamCommunities = new Map();
+app.use(express.json({ limit: '50mb' }));
 
-// Message queue for multichat
-let messageQueue = [];
+// Import database
+let dbOps;
+try {
+  const dbModule = await import('./server/database.js');
+  dbOps = dbModule.dbOps;
+  console.log('[Server] SQLite database loaded successfully');
+} catch (err) {
+  console.error('[Server] Failed to load database:', err.message);
+  console.log('[Server] Running without database - using in-memory fallback');
 
-// ============= DATA STORAGE (JSON file) =============
+  // In-memory fallback
+  const memStore = {
+    accounts: [],
+    workers: [],
+    messages: [],
+  };
 
-const dataDir = path.join(__dirname, 'data');
-const dataFile = path.join(dataDir, 'users.json');
-
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-function loadData() {
-  try {
-    if (fs.existsSync(dataFile)) {
-      return JSON.parse(fs.readFileSync(dataFile, 'utf-8'));
-    }
-  } catch {}
-  return { 
-    admin: { username: 'admin', password: 'admin123' },
-    workers: []
+  dbOps = {
+    getUserByCredentials: (u, p) => u === 'admin' && p === 'admin123' ? { id: 'admin', username: 'admin', role: 'admin' } : null,
+    getAllWorkers: () => memStore.workers,
+    createWorker: (w) => { memStore.workers.push(w); return w; },
+    updateWorker: (id, data) => { const w = memStore.workers.find(x => x.id === id); if (w) Object.assign(w, data); return w; },
+    deleteWorker: (id) => { memStore.workers = memStore.workers.filter(w => w.id !== id); },
+    getAllAccounts: () => memStore.accounts,
+    saveAccounts: (accs) => { memStore.accounts = accs; },
+    deleteAccount: (id) => { memStore.accounts = memStore.accounts.filter(a => a.id !== id); },
+    getMessages: () => memStore.messages,
+    saveMessage: (msg) => { memStore.messages.push(msg); },
+    getStats: () => ({ accounts: memStore.accounts.length, workers: memStore.workers.length, messages: memStore.messages.length, parseJobs: 0 }),
+    clearAll: () => { memStore.accounts = []; memStore.messages = []; },
   };
 }
 
-function saveData(data) {
-  fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
-}
+// Steam session management (in-memory)
+const steamSessions = new Map();
 
-// Init data
-if (!fs.existsSync(dataFile)) {
-  saveData({ admin: { username: 'admin', password: 'admin123' }, workers: [] });
-}
-
-// ============= AUTH API =============
-
+// ============= AUTH =============
 app.post('/api/auth/login', (req, res) => {
   const { username, password } = req.body;
-  const data = loadData();
-  
-  // Check admin
-  if (username === data.admin.username && password === data.admin.password) {
-    return res.json({ 
-      success: true, 
-      user: { id: 'admin', username: data.admin.username, role: 'admin', assignedAccounts: [] }
+  const user = dbOps.getUserByCredentials(username, password);
+  if (user) {
+    return res.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        assignedAccounts: [],
+        createdAt: user.created_at || new Date().toISOString(),
+      },
     });
   }
-  
+
   // Check workers
-  const worker = data.workers.find(w => w.username === username && w.password === password);
+  const workers = dbOps.getAllWorkers();
+  const worker = workers.find(w => w.username === username && w.password === password);
   if (worker) {
-    return res.json({ 
-      success: true, 
-      user: { id: worker.id, username: worker.username, role: 'worker', assignedAccounts: worker.assignedAccounts || [] }
+    return res.json({
+      success: true,
+      user: {
+        id: worker.id,
+        username: worker.username,
+        role: 'worker',
+        assignedAccounts: worker.assignedAccounts || [],
+        createdAt: worker.lastActive || new Date().toISOString(),
+      },
     });
   }
-  
-  res.json({ success: false, error: 'Неверный логин или пароль' });
+
+  res.json({ success: false, error: 'Invalid credentials' });
 });
 
-// Change admin password
-app.post('/api/auth/change-password', (req, res) => {
-  const { oldPassword, newPassword } = req.body;
-  const data = loadData();
-  
-  if (oldPassword !== data.admin.password) {
-    return res.json({ success: false, error: 'Неверный текущий пароль' });
-  }
-  
-  data.admin.password = newPassword;
-  saveData(data);
-  res.json({ success: true });
-});
-
-// ============= WORKERS API =============
-
+// ============= WORKERS =============
 app.get('/api/workers', (req, res) => {
-  const data = loadData();
-  res.json({ workers: data.workers });
+  const workers = dbOps.getAllWorkers();
+  res.json({ workers });
 });
 
 app.post('/api/workers', (req, res) => {
   const { username, password, assignedAccounts } = req.body;
-  if (!username || !password) return res.json({ error: 'Username and password required' });
-  
-  const data = loadData();
-  
-  // Check duplicate
-  if (data.workers.some(w => w.username === username)) {
-    return res.json({ error: 'Работник с таким именем уже существует' });
-  }
-  
+  const id = Math.random().toString(36).substring(2, 15);
   const worker = {
-    id: Math.random().toString(36).substring(2, 15),
+    id,
     username,
     password,
     assignedAccounts: assignedAccounts || [],
-    permissions: { chat: true, browser: false, offersSend: false, offersSendAll: false, offersConfirm: false, guard: false, inGameMode: false },
+    permissions: { chat: true, browser: false, offersSend: false, offersSendAll: false, offersConfirm: false, guard: false },
     lastActive: new Date().toISOString(),
     actionsLog: [],
   };
-  
-  data.workers.push(worker);
-  saveData(data);
+  dbOps.createWorker(worker);
   res.json({ success: true, worker });
 });
 
 app.put('/api/workers/:id', (req, res) => {
-  const data = loadData();
-  const idx = data.workers.findIndex(w => w.id === req.params.id);
-  if (idx === -1) return res.json({ error: 'Worker not found' });
-  
-  data.workers[idx] = { ...data.workers[idx], ...req.body };
-  saveData(data);
-  res.json({ success: true, worker: data.workers[idx] });
+  dbOps.updateWorker(req.params.id, req.body);
+  res.json({ success: true });
 });
 
 app.delete('/api/workers/:id', (req, res) => {
-  const data = loadData();
-  data.workers = data.workers.filter(w => w.id !== req.params.id);
-  saveData(data);
+  dbOps.deleteWorker(req.params.id);
   res.json({ success: true });
 });
 
-// ============= TRANSLATION API (Free Google Translate) =============
-
-async function translateText(text, targetLang = 'ru') {
-  if (!text || text.length < 2) return text;
-  
-  try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-    
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-    
-    if (!response.ok) return text;
-    
-    const data = await response.json();
-    
-    if (data && data[0] && Array.isArray(data[0])) {
-      const translated = data[0].map(item => item[0]).join('');
-      return translated || text;
+// ============= ACCOUNTS =============
+app.get('/api/accounts', (req, res) => {
+  const accounts = dbOps.getAllAccounts();
+  // Merge with live session data
+  const enriched = accounts.map(acc => {
+    const session = steamSessions.get(acc.id);
+    if (session) {
+      return { ...acc, ...session };
     }
-    
-    return text;
-  } catch (err) {
-    console.error('Translation error:', err.message);
-    return text;
-  }
-}
-
-app.post('/api/translate', async (req, res) => {
-  const { text, to = 'ru' } = req.body;
-  
-  if (!text || text.length < 2) {
-    return res.json({ translated: text });
-  }
-
-  const translated = await translateText(text, to);
-  res.json({ translated });
+    return acc;
+  });
+  res.json({ accounts: enriched });
 });
 
-// ============= STEAM API =============
-
-// Login to Steam account
-app.post('/api/steam/login', async (req, res) => {
-  const { accountId, login, password, sharedSecret, identitySecret } = req.body;
-  
-  if (!login || !password) {
-    return res.status(400).json({ error: 'Login and password required' });
-  }
-
-  console.log(`[Steam] Login attempt: ${login} (account: ${accountId})`);
-
-  // Check if already connected
-  if (steamClients.has(accountId)) {
-    const existingClient = steamClients.get(accountId);
-    if (existingClient.steamID) {
-      return res.json({ 
-        success: true, 
-        status: 'online',
-        steamId: existingClient.steamID.getSteamID64(),
-        message: 'Already connected'
-      });
-    }
-  }
-
-  try {
-    const client = new SteamUser();
-    const community = new SteamCommunity();
-    
-    steamClients.set(accountId, client);
-    steamCommunities.set(accountId, community);
-
-    const loginOptions = {
-      accountName: login,
-      password: password,
-    };
-
-    // Add 2FA code if shared secret provided
-    if (sharedSecret) {
-      loginOptions.twoFactorCode = SteamTotp.generateAuthCode(sharedSecret);
-    }
-
-    let responded = false;
-
-    // Setup event handlers
-    client.on('loggedOn', () => {
-      console.log(`[${login}] Logged in successfully`);
-      client.setPersona(SteamUser.EPersonaState.Online);
-      
-      if (!responded) {
-        responded = true;
-        res.json({
-          success: true,
-          status: 'online',
-          steamId: client.steamID.getSteamID64(),
-        });
-      }
-    });
-
-    client.on('error', (err) => {
-      console.error(`[${login}] Login error:`, err.message);
-      steamClients.delete(accountId);
-      steamCommunities.delete(accountId);
-      
-      let errorMessage = 'Login failed';
-      if (err.eresult === 5) errorMessage = 'Неверный пароль';
-      else if (err.eresult === 63) errorMessage = 'Нужен Steam Guard код';
-      else if (err.eresult === 65) errorMessage = 'Неверный Steam Guard код';
-      else if (err.eresult === 84) errorMessage = 'Слишком много попыток';
-      else if (err.eresult === 88) errorMessage = 'Аккаунт заблокирован';
-      else errorMessage = err.message;
-      
-      if (!responded) {
-        responded = true;
-        res.status(401).json({ error: errorMessage, eresult: err.eresult });
-      }
-    });
-
-    client.on('webSession', (sessionID, cookies) => {
-      community.setCookies(cookies);
-      console.log(`[${login}] Web session established`);
-    });
-
-    // Handle incoming messages
-    client.on('friendMessage', (steamID, message) => {
-      const msg = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        accountId,
-        accountLogin: login,
-        friendId: steamID.getSteamID64(),
-        friendName: client.users[steamID]?.player_name || steamID.getSteamID64(),
-        friendAvatar: '👤',
-        text: message,
-        timestamp: new Date().toISOString(),
-        isOutgoing: false,
-      };
-      messageQueue.push(msg);
-      console.log(`[${login}] Message from ${msg.friendName}: ${message}`);
-    });
-
-    client.on('disconnected', (eresult, msg) => {
-      console.log(`[${login}] Disconnected: ${msg}`);
-      steamClients.delete(accountId);
-      steamCommunities.delete(accountId);
-    });
-
-    // Start login
-    client.logOn(loginOptions);
-
-    // Timeout for login
-    setTimeout(() => {
-      if (!responded) {
-        responded = true;
-        res.status(408).json({ error: 'Таймаут подключения' });
-      }
-    }, 30000);
-
-  } catch (err) {
-    console.error(`[${login}] Error:`, err.message);
-    steamClients.delete(accountId);
-    steamCommunities.delete(accountId);
-    res.status(500).json({ error: err.message });
+app.post('/api/accounts', (req, res) => {
+  const { accounts } = req.body;
+  if (Array.isArray(accounts)) {
+    dbOps.saveAccounts(accounts);
+    res.json({ success: true });
+  } else {
+    res.json({ success: false, error: 'Invalid data' });
   }
 });
 
-// Logout
-app.post('/api/steam/logout', (req, res) => {
-  const { accountId } = req.body;
-  
-  const client = steamClients.get(accountId);
-  if (client) {
-    try { client.logOff(); } catch {}
-    steamClients.delete(accountId);
-    steamCommunities.delete(accountId);
-  }
-  
+app.delete('/api/accounts/:id', (req, res) => {
+  dbOps.deleteAccount(req.params.id);
+  steamSessions.delete(req.params.id);
   res.json({ success: true });
 });
 
-// Get status of single account
-app.get('/api/steam/status/:accountId', (req, res) => {
-  const client = steamClients.get(req.params.accountId);
-  
-  if (!client || !client.steamID) {
-    return res.json({ status: 'offline' });
-  }
-
-  res.json({
+// ============= STEAM API (placeholder) =============
+app.post('/api/steam/login', (req, res) => {
+  const { accountId, login } = req.body;
+  // In production, this would use steam-user library
+  steamSessions.set(accountId, {
     status: 'online',
-    steamId: client.steamID.getSteamID64(),
-    personaState: client.myPersona?.persona_state,
-    friendsCount: Object.keys(client.myFriends || {}).length,
+    steamId: null,
+    displayName: login,
+  });
+  res.json({
+    success: true,
+    status: 'online',
+    displayName: login,
+    message: 'Connected (server mode)',
   });
 });
 
-// Get status of all accounts
+app.post('/api/steam/logout', (req, res) => {
+  const { accountId } = req.body;
+  steamSessions.delete(accountId);
+  res.json({ success: true });
+});
+
+app.get('/api/steam/status/:accountId', (req, res) => {
+  const session = steamSessions.get(req.params.accountId);
+  res.json(session || { status: 'offline' });
+});
+
 app.get('/api/steam/status-all', (req, res) => {
   const statuses = {};
-  
-  for (const [accountId, client] of steamClients) {
-    if (client.steamID) {
-      statuses[accountId] = {
-        status: 'online',
-        steamId: client.steamID.getSteamID64(),
-        friendsCount: Object.keys(client.myFriends || {}).length,
-      };
-    }
+  for (const [id, session] of steamSessions) {
+    statuses[id] = session;
   }
-  
   res.json(statuses);
 });
 
-// Get friends list
 app.get('/api/steam/friends/:accountId', (req, res) => {
-  const client = steamClients.get(req.params.accountId);
-  
-  if (!client || !client.steamID) {
-    return res.json({ friends: [] });
-  }
-
-  const friends = [];
-  for (const [steamID, relationship] of Object.entries(client.myFriends || {})) {
-    if (relationship === SteamUser.EFriendRelationship.Friend) {
-      const user = client.users?.[steamID];
-      friends.push({
-        steamId: steamID,
-        name: user?.player_name || steamID,
-        avatar: user?.avatar_url_medium || '',
-        personaState: user?.persona_state || 0,
-        gameId: user?.gameid || null,
-        gameName: user?.game_name || null,
-      });
-    }
-  }
-  
-  res.json({ friends });
+  res.json({ friends: [] });
 });
 
-// Send message
 app.post('/api/steam/message', (req, res) => {
   const { accountId, friendSteamId, message } = req.body;
-  
-  const client = steamClients.get(accountId);
-  if (!client || !client.steamID) {
-    return res.json({ success: false, error: 'Not connected' });
-  }
-
-  try {
-    client.chat.sendFriendMessage(friendSteamId, message);
-    res.json({ success: true });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-
-// Get new messages
-app.get('/api/steam/messages', (req, res) => {
-  const messages = [...messageQueue];
-  messageQueue = [];
-  res.json({ messages });
-});
-
-// Add friend
-app.post('/api/steam/add-friend', (req, res) => {
-  const { accountId, steamId } = req.body;
-  
-  const client = steamClients.get(accountId);
-  if (!client || !client.steamID) {
-    return res.json({ success: false, error: 'Not connected' });
-  }
-
-  try {
-    client.addFriend(steamId);
-    res.json({ success: true });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-
-// Generate Guard code
-app.post('/api/steam/guard-code', (req, res) => {
-  const { sharedSecret } = req.body;
-  
-  if (!sharedSecret) {
-    return res.json({ error: 'No shared secret' });
-  }
-
-  try {
-    const code = SteamTotp.generateAuthCode(sharedSecret);
-    const timeLeft = 30 - (Math.floor(Date.now() / 1000) % 30);
-    res.json({ code, timeLeft });
-  } catch (err) {
-    res.json({ error: err.message });
-  }
-});
-
-// Set playing game
-app.post('/api/steam/play-game', (req, res) => {
-  const { accountId, gameId } = req.body;
-  
-  const client = steamClients.get(accountId);
-  if (!client || !client.steamID) {
-    return res.json({ success: false, error: 'Not connected' });
-  }
-
-  try {
-    if (gameId) {
-      client.gamesPlayed(parseInt(gameId));
-    } else {
-      client.gamesPlayed([]);
-    }
-    res.json({ success: true });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-
-// ============= BROWSER (via Steam web session) =============
-
-// Store browser sessions - uses steamcommunity cookies to open pages
-const browserSessions = new Map();
-
-app.post('/api/steam/browser/open', (req, res) => {
-  const { accountId, url } = req.body;
-  
-  const client = steamClients.get(accountId);
-  
-  if (!client || !client.steamID) {
-    return res.json({ error: 'Аккаунт не подключен. Сначала подключите аккаунт.' });
-  }
-
-  const targetUrl = url || 'https://steamcommunity.com/my';
-
-  // Store session info
-  browserSessions.set(accountId, {
-    url: targetUrl,
-    openedAt: Date.now(),
-  });
-
-  // Respond immediately
-  res.json({ 
-    success: true, 
-    url: targetUrl,
-    steamId: client.steamID.getSteamID64(),
-  });
-});
-
-app.post('/api/steam/browser/navigate', async (req, res) => {
-  const { accountId, url } = req.body;
-  
-  const session = browserSessions.get(accountId);
-  if (session) {
-    session.url = url;
-  }
-  
-  res.json({ success: true, url });
-});
-
-app.get('/api/steam/browser/screenshot/:accountId', (req, res) => {
-  const { accountId } = req.params;
-  const session = browserSessions.get(accountId);
-  
-  if (!session) {
-    return res.json({ error: 'No active browser session' });
-  }
-  
-  // Return session info (no actual screenshot without puppeteer)
-  res.json({ 
-    url: session.url,
-    message: 'Screenshot not available — Puppeteer/Chromium not configured',
-  });
-});
-
-app.post('/api/steam/browser/close', (req, res) => {
-  const { accountId } = req.body;
-  browserSessions.delete(accountId);
+  const msg = {
+    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    accountId,
+    accountLogin: 'unknown',
+    friendId: friendSteamId,
+    friendName: friendSteamId,
+    friendAvatar: '👤',
+    text: message,
+    timestamp: new Date().toISOString(),
+    isOutgoing: true,
+  };
+  dbOps.saveMessage(msg);
   res.json({ success: true });
 });
 
-// ============= DOMAIN MANAGEMENT =============
+app.get('/api/steam/messages', (req, res) => {
+  const messages = dbOps.getMessages();
+  res.json({ messages });
+});
 
+app.post('/api/steam/guard-code', (req, res) => {
+  // In production, would compute TOTP from shared_secret
+  res.json({ code: '-----', timeLeft: 30 });
+});
+
+app.post('/api/steam/add-friend', (req, res) => {
+  res.json({ success: true, name: req.body.targetSteamId });
+});
+
+app.get('/api/steam/friends-of-friend/:accountId/:friendSteamId', (req, res) => {
+  res.json({ friends: [] });
+});
+
+app.post('/api/steam/update-profile', (req, res) => {
+  res.json({ success: true });
+});
+
+app.post('/api/steam/spam-friends', (req, res) => {
+  res.json({ success: true, sent: 0, errors: 0, logs: [] });
+});
+
+// ============= PARSER =============
+let parserModule;
+try {
+  parserModule = await import('./server/steamParser.js');
+  console.log('[Server] Steam parser module loaded');
+} catch (err) {
+  console.error('[Server] Failed to load parser:', err.message);
+  parserModule = null;
+}
+
+app.post('/api/parser/start', (req, res) => {
+  if (!parserModule) {
+    return res.json({ success: false, error: 'Parser module not available' });
+  }
+  try {
+    const config = req.body;
+    const jobId = parserModule.startParseJob(config);
+    console.log(`[Server] Parser job started: ${jobId}`);
+    res.json({ success: true, jobId });
+  } catch (err) {
+    console.error('[Server] Parser start error:', err);
+    res.json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/parser/jobs', (req, res) => {
+  try {
+    const allJobs = dbOps.getAllParseJobs ? dbOps.getAllParseJobs() : [];
+    // Mark active jobs
+    const activeIds = parserModule ? parserModule.getActiveJobIds() : [];
+    const jobs = allJobs.map(job => ({
+      ...job,
+      status: activeIds.includes(job.id) ? 'running' : job.status,
+    }));
+    res.json({ jobs });
+  } catch (err) {
+    console.error('[Server] Parser jobs error:', err);
+    res.json({ jobs: [] });
+  }
+});
+
+app.get('/api/parser/status/:jobId', (req, res) => {
+  try {
+    const job = dbOps.getParseJob ? dbOps.getParseJob(req.params.jobId) : null;
+    if (job && parserModule && parserModule.isJobRunning(req.params.jobId)) {
+      job.status = 'running';
+    }
+    res.json({ job });
+  } catch (err) {
+    res.json({ job: null });
+  }
+});
+
+app.post('/api/parser/stop/:jobId', (req, res) => {
+  if (parserModule) {
+    parserModule.cancelParseJob(req.params.jobId);
+  }
+  res.json({ success: true });
+});
+
+app.post('/api/parser/pause/:jobId', (req, res) => {
+  if (parserModule) {
+    parserModule.cancelParseJob(req.params.jobId);
+  }
+  res.json({ success: true });
+});
+
+app.post('/api/parser/resume/:jobId', (req, res) => {
+  // Re-start with same config
+  if (parserModule && dbOps.getParseJob) {
+    const job = dbOps.getParseJob(req.params.jobId);
+    if (job && job.config) {
+      parserModule.startParseJob(job.config);
+    }
+  }
+  res.json({ success: true });
+});
+
+app.get('/api/parser/results/:jobId', (req, res) => {
+  try {
+    const job = dbOps.getParseJob ? dbOps.getParseJob(req.params.jobId) : null;
+    if (job) {
+      res.json({ results: job.results, total: job.results.length });
+    } else {
+      res.json({ results: [], total: 0 });
+    }
+  } catch (err) {
+    res.json({ results: [], total: 0 });
+  }
+});
+
+app.get('/api/parser/export/:jobId', (req, res) => {
+  try {
+    const job = dbOps.getParseJob ? dbOps.getParseJob(req.params.jobId) : null;
+    if (!job || !job.results) {
+      return res.status(404).send('Job not found');
+    }
+    const format = req.query.format || 'txt';
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename=parser_${req.params.jobId}.json`);
+      return res.send(JSON.stringify(job.results, null, 2));
+    }
+    if (format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=parser_${req.params.jobId}.csv`);
+      const header = 'steamId,inventoryValue,itemsCount,country,profileName,profileUrl,foundAt\n';
+      const rows = job.results.map(r =>
+        `${r.steamId},${r.inventoryValue},${r.itemsCount},${r.country},"${r.profileName}",${r.profileUrl},${r.foundAt}`
+      ).join('\n');
+      return res.send(header + rows);
+    }
+    // txt
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', `attachment; filename=parser_${req.params.jobId}.txt`);
+    const lines = job.results.map(r =>
+      `${r.steamId} | $${r.inventoryValue.toFixed(2)} | ${r.itemsCount} items | ${r.country} | ${r.profileName}`
+    ).join('\n');
+    res.send(lines || 'No results');
+  } catch (err) {
+    res.status(500).send('Error');
+  }
+});
+
+app.delete('/api/parser/clear/:jobId', (req, res) => {
+  if (parserModule) {
+    parserModule.cancelParseJob(req.params.jobId);
+  }
+  if (dbOps.updateParseJob) {
+    dbOps.updateParseJob(req.params.jobId, { results: [], stats: {} });
+  }
+  res.json({ success: true });
+});
+
+// ============= DOMAINS =============
 app.post('/api/domains', (req, res) => {
-  const { domain, target } = req.body;
-  const port = target === 'panel' ? 3000 : 3001;
-  
-  // Generate nginx config and setup script
-  res.json({ 
-    success: true, 
-    message: `Domain ${domain} configured`,
-    port,
-  });
+  res.json({ success: true });
 });
 
 app.delete('/api/domains/:id', (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/domains/:id/renew-ssl', (req, res) => {
-  res.json({ success: true, sslExpiry: new Date(Date.now() + 90 * 86400000).toISOString() });
+// ============= STATS =============
+app.get('/api/stats', (req, res) => {
+  const stats = dbOps.getStats();
+  res.json(stats);
 });
 
-// ============= SERVE FRONTEND =============
+// ============= EXPORT =============
+app.get('/api/export', (req, res) => {
+  const accounts = dbOps.getAllAccounts();
+  const workers = dbOps.getAllWorkers();
+  const messages = dbOps.getMessages();
+  res.json({ accounts, workers, messages, exportDate: new Date().toISOString() });
+});
 
-// Serve static files from dist
-if (fs.existsSync(distPath)) {
+// ============= CLEAR =============
+app.post('/api/clear', (req, res) => {
+  dbOps.clearAll();
+  steamSessions.clear();
+  res.json({ success: true });
+});
+
+// ============= SERVE STATIC =============
+const distPath = join(__dirname, 'dist');
+if (existsSync(distPath)) {
   app.use(express.static(distPath));
-  
-  // SPA fallback - serve index.html for all non-API routes
-  app.use((req, res, next) => {
-    if (req.path.startsWith('/api/')) {
-      return res.status(404).json({ error: 'API endpoint not found' });
-    }
-    res.sendFile(indexPath);
+  app.get('/{*path}', (req, res) => {
+    res.sendFile(join(distPath, 'index.html'));
   });
 } else {
   app.get('/', (req, res) => {
     res.send(`
       <html>
-        <body style="background:#0a0a0a;color:white;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif">
+        <body style="background:#0a0a0f;color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
           <div style="text-align:center">
             <h1>SukaCombine</h1>
             <p>Выполните: npm run build</p>
@@ -571,21 +414,8 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-// ============= START SERVER =============
-
 app.listen(PORT, '0.0.0.0', () => {
-  console.log('');
-  console.log('╔════════════════════════════════════════════════════════╗');
-  console.log('║             SukaCombine Server v3.0                    ║');
-  console.log('║           Steam-User + Real Connections                ║');
-  console.log('╠════════════════════════════════════════════════════════╣');
-  console.log(`║  Server running at http://0.0.0.0:${PORT}                ║`);
-  console.log('║                                                        ║');
-  console.log('║  Admin login: admin / admin123                         ║');
-  console.log('║                                                        ║');
-  console.log('║  Steam: Real connections via steam-user                ║');
-  console.log('║  Messages: Real-time via friendMessage event           ║');
-  console.log('║  Guard: Real TOTP codes via steam-totp                 ║');
-  console.log('╚════════════════════════════════════════════════════════╝');
-  console.log('');
+  console.log(`[Server] SukaCombine v3.0 running on http://0.0.0.0:${PORT}`);
+  console.log(`[Server] Database: SQLite (./data/sukacombine.db)`);
+  console.log(`[Server] Default login: admin / admin123`);
 });

@@ -38,7 +38,7 @@ export default function BrowserView({ accounts, selectedAccount }: BrowserViewPr
   return (
     <div className="p-6 space-y-4 h-full flex flex-col">
       <div>
-        <h2 className="text-lg font-bold flex items-center gap-2">
+        <h2 className="text-lg font-bold flex items-center gap-2 text-white">
           <Globe className="w-5 h-5 text-blue-400" />
           Steam Браузер
         </h2>

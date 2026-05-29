@@ -23,11 +23,11 @@ export default function LoginPage() {
     <div className="flex items-center justify-center min-h-screen bg-dark-900">
       <div className="glass-card rounded-2xl p-8 w-full max-w-sm space-y-6 animate-fade-in">
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-xl font-bold">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-xl font-bold text-white">
             ST
           </div>
-          <h1 className="text-xl font-bold">SukaCombine</h1>
-          <p className="text-white/40 text-sm">Steam Panel v3.0</p>
+          <h1 className="text-xl font-bold text-white">SukaCombine</h1>
+          <p className="text-white/40 text-sm">Steam Panel v3.0 • SQLite DB</p>
         </div>
 
         {error && (
@@ -75,6 +75,13 @@ export default function LoginPage() {
           >
             {loading ? 'Вход...' : 'Войти'}
           </button>
+        </div>
+
+        <div className="text-center">
+          <div className="text-[10px] text-white/20 space-y-0.5">
+            <div>🗄️ Серверная БД: SQLite</div>
+            <div>Данные: ./data/sukacombine.db</div>
+          </div>
         </div>
       </div>
     </div>

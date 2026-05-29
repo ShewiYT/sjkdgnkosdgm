@@ -41,8 +41,7 @@ export default function Workers({ accounts }: WorkersProps) {
           onClick={() => setShowCreate(!showCreate)}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-400 text-sm hover:bg-indigo-500/30 transition-colors"
         >
-          <Plus size={16} />
-          Создать
+          <Plus size={16} /> Создать
         </button>
       </div>
 
@@ -104,11 +103,9 @@ export default function Workers({ accounts }: WorkersProps) {
                     {worker.assignedAccounts.length} аккаунтов • Последняя активность: {new Date(worker.lastActive).toLocaleString('ru')}
                   </div>
                 </div>
-                <div className="flex gap-1">
-                  <button onClick={() => removeWorker(worker.id)} className="p-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-500/10">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                <button onClick={() => removeWorker(worker.id)} className="p-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-500/10">
+                  <Trash2 size={14} />
+                </button>
               </div>
               <div className="flex flex-wrap gap-1">
                 {worker.assignedAccounts.map(accId => {

@@ -32,13 +32,10 @@ export default function App() {
 
   const accounts = getVisibleAccounts();
 
-  // Load accounts from server and refresh statuses on mount
   useEffect(() => {
     if (!currentUser) return;
-    
     loadAccountsFromServer();
     refreshStatuses();
-    
     const interval = setInterval(refreshStatuses, 10000);
     return () => clearInterval(interval);
   }, [currentUser, refreshStatuses, loadAccountsFromServer]);
@@ -65,7 +62,7 @@ export default function App() {
       case 'dashboard':
         return <Dashboard accounts={accounts} />;
       case 'multichat':
-        return <MultiChat selectedAccount={selectedAccount} />;
+        return <MultiChat accounts={accounts} selectedAccount={selectedAccount} />;
       case 'browser':
         return <BrowserView accounts={accounts} selectedAccount={selectedAccount} />;
       case 'offers':
@@ -77,7 +74,7 @@ export default function App() {
       case 'parser':
         return <SteamParser />;
       case 'account-manager':
-        return <AccountManager accounts={accounts} />;
+        return <AccountManager accounts={accounts} selectedAccount={selectedAccount} />;
       case 'sda':
         return <SDAGuard accounts={accounts} />;
       case 'guard':
@@ -85,9 +82,9 @@ export default function App() {
       case 'notifications':
         return <NotificationsView />;
       case 'domains':
-        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/50">Нет доступа</div>;
+        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/30">Нет доступа</div>;
       case 'workers':
-        return isAdmin ? <Workers accounts={accounts} /> : <div className="p-6 text-white/50">Нет доступа</div>;
+        return isAdmin ? <Workers accounts={accounts} /> : <div className="p-6 text-white/30">Нет доступа</div>;
       case 'settings':
         return <SettingsView />;
       default:
@@ -96,7 +93,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-dark-900">
+    <div className="flex h-screen bg-dark-900 text-white">
       <Sidebar
         activeView={activeView}
         setActiveView={setActiveView}

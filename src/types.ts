@@ -167,7 +167,6 @@ export interface NotificationSettings {
   notifyLogin: boolean;
 }
 
-// Friend Request Log
 export interface FriendRequestLog {
   id: string;
   accountId: string;
@@ -180,7 +179,6 @@ export interface FriendRequestLog {
   error?: string;
 }
 
-// Spammer types
 export interface SpammerLog {
   id: string;
   accountLogin: string;
@@ -191,7 +189,6 @@ export interface SpammerLog {
   error?: string;
 }
 
-// Parser types
 export interface ParserConfig {
   apiKey: string;
   startIds: string[];

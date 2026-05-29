@@ -1,557 +1,310 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
-  Search, Play, Square, Pause, Download, Trash2,
-  Settings, Package, AlertTriangle, CheckCircle, Copy,
-  ChevronDown, ChevronUp
-} from 'lucide-react';
+import { Search, Play, Square, Download, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import { parserApi } from '../api';
-import type { ParserJob, ParserResult, ParserConfig } from '../types';
+import type { ParserJob } from '../types';
 
 export default function SteamParser() {
-  // Config state
-  const [apiKey, setApiKey] = useState('');
-  const [startIds, setStartIds] = useState('');
-  const [minPrice, setMinPrice] = useState(500);
-  const [maxPrice, setMaxPrice] = useState(1000);
-  const [maxDepth, setMaxDepth] = useState(3);
-  const [maxFriends, setMaxFriends] = useState(20);
-  const [threads, setThreads] = useState(3);
-  
-  // Job state
-  const [currentJob, setCurrentJob] = useState<ParserJob | null>(null);
   const [jobs, setJobs] = useState<ParserJob[]>([]);
+  const [startIds, setStartIds] = useState('');
+  const [minPrice, setMinPrice] = useState(10);
+  const [maxPrice, setMaxPrice] = useState(10000);
+  const [maxDepth] = useState(3);
+  const [threads] = useState(1);
+  const [apiKey, setApiKey] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showSettings, setShowSettings] = useState(true);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const [selectedJob, setSelectedJob] = useState<string | null>(null);
+  const logsRef = useRef<HTMLDivElement>(null);
 
-  // Load saved API key
   useEffect(() => {
-    const savedKey = localStorage.getItem('steam_api_key');
-    if (savedKey) setApiKey(savedKey);
-  }, []);
-
-  // Save API key
-  useEffect(() => {
-    if (apiKey) localStorage.setItem('steam_api_key', apiKey);
-  }, [apiKey]);
-
-  // Poll for job status
-  useEffect(() => {
-    const pollStatus = async () => {
-      // Get active jobs
-      const activeJobs = await parserApi.getActiveJobs();
-      setJobs(activeJobs);
-      
-      // If we have a current job, update its status
-      if (currentJob?.id) {
-        const job = await parserApi.getParserStatus(currentJob.id);
-        if (job) {
-          setCurrentJob(job);
-        }
-      } else if (activeJobs.length > 0 && activeJobs[0].status === 'running') {
-        // Auto-select running job
-        setCurrentJob(activeJobs[0]);
-      }
-    };
-
-    pollStatus();
-    const interval = setInterval(pollStatus, 2000);
+    loadJobs();
+    const interval = setInterval(loadJobs, 3000);
     return () => clearInterval(interval);
-  }, [currentJob?.id]);
+  }, []);
 
   // Auto-scroll logs
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentJob?.logs]);
+    if (logsRef.current) {
+      logsRef.current.scrollTop = logsRef.current.scrollHeight;
+    }
+  }, [jobs, selectedJob]);
+
+  const loadJobs = async () => {
+    const activeJobs = await parserApi.getActiveJobs();
+    setJobs(prev => {
+      // Keep existing jobs that might not be returned anymore, merge with new
+      if (activeJobs.length > 0) return activeJobs;
+      return prev;
+    });
+  };
 
   const handleStart = async () => {
-    if (!apiKey.trim()) {
-      alert('Введите Steam API ключ');
-      return;
-    }
-
-    const ids = startIds
-      .split(/[\n,\s]+/)
-      .map(id => id.trim())
-      .filter(id => id.length > 0 && /^[0-9]+$/.test(id));
-
-    if (ids.length === 0) {
-      alert('Введите хотя бы один Steam ID');
-      return;
-    }
-
+    const ids = startIds.split(/[\n,\s]+/).filter(id => id.trim() && /^[0-9]+$/.test(id.trim()));
+    if (ids.length === 0) return;
     setLoading(true);
-    
-    const config: ParserConfig = {
+    const result = await parserApi.startParser({
       apiKey,
       startIds: ids,
       minPrice,
       maxPrice,
       maxDepth,
-      maxFriendsPerLevel: maxFriends,
+      maxFriendsPerLevel: 100,
       threads,
-    };
-
-    const result = await parserApi.startParser(config);
-    
-    if (result.success && result.jobId) {
-      const job = await parserApi.getParserStatus(result.jobId);
-      if (job) setCurrentJob(job);
-    } else {
-      alert(result.error || 'Ошибка запуска парсера');
-    }
-    
+    });
     setLoading(false);
+    if (result.success && result.jobId) {
+      setSelectedJob(result.jobId);
+    }
+    // Wait a bit and reload
+    setTimeout(loadJobs, 1000);
   };
 
-  const handleStop = async () => {
-    if (!currentJob?.id) return;
-    await parserApi.stopParser(currentJob.id);
+  const handleStop = async (jobId: string) => {
+    await parserApi.stopParser(jobId);
+    setTimeout(loadJobs, 1000);
   };
 
-  const handlePause = async () => {
-    if (!currentJob?.id) return;
-    if (currentJob.status === 'paused') {
-      await parserApi.resumeParser(currentJob.id);
-    } else {
-      await parserApi.pauseParser(currentJob.id);
+  const handleExport = async (jobId: string) => {
+    const blob = await parserApi.exportResults(jobId, 'txt');
+    if (blob && blob.size > 0) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `parser_results_${jobId}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
     }
   };
 
-  const handleExport = async (format: 'txt' | 'json' | 'csv') => {
-    if (!currentJob?.id) return;
-    
-    const blob = await parserApi.exportResults(currentJob.id, format);
-    if (!blob) return;
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `steam_ids_${new Date().toISOString().split('T')[0]}.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleClear = async (jobId: string) => {
+    await parserApi.clearResults(jobId);
+    setJobs(prev => prev.filter(j => j.id !== jobId));
+    if (selectedJob === jobId) setSelectedJob(null);
   };
 
-  const handleClear = async () => {
-    if (!currentJob?.id) return;
-    if (!confirm('Очистить результаты?')) return;
-    await parserApi.clearResults(currentJob.id);
-    setCurrentJob(null);
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(text);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const copyAllResults = () => {
-    if (!currentJob?.results) return;
-    const text = currentJob.results.map(r => r.steamId).join('\n');
-    navigator.clipboard.writeText(text);
-    setCopiedId('all');
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const isRunning = currentJob?.status === 'running';
-  const isPaused = currentJob?.status === 'paused';
+  const activeJob = selectedJob ? jobs.find(j => j.id === selectedJob) : jobs[0];
+  const hasRunningJobs = jobs.some(j => j.status === 'running');
 
   return (
     <div className="p-6 space-y-6 animate-fade-in overflow-y-auto max-h-[calc(100vh-52px)]">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
-            <Search size={24} />
-            Steam Парсер
-          </h1>
-          <p className="text-sm text-white/40 mt-1">
-            Поиск Steam ID по стоимости инвентаря
-          </p>
-        </div>
-        
-        {jobs.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-white/40">Активных задач:</span>
-            <span className="text-xs px-2 py-1 rounded-full bg-indigo-500/20 text-indigo-400">
-              {jobs.filter(j => j.status === 'running').length}
+      <div>
+        <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
+          <Search size={24} />
+          Парсер Steam ID
+        </h1>
+        <p className="text-sm text-white/40 mt-1">
+          Поиск аккаунтов с ценным инвентарём CS2
+          {hasRunningJobs && (
+            <span className="ml-2 inline-flex items-center gap-1 text-green-400">
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              Парсинг идёт на сервере
             </span>
-          </div>
-        )}
+          )}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Settings panel */}
-        <div className="space-y-4">
-          <div className="glass-card rounded-2xl overflow-hidden">
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <Settings size={16} className="text-indigo-400" />
-                <span className="text-sm font-semibold text-white">Настройки парсера</span>
-              </div>
-              {showSettings ? <ChevronUp size={16} className="text-white/40" /> : <ChevronDown size={16} className="text-white/40" />}
-            </button>
+        {/* Settings */}
+        <div className="glass-card rounded-2xl p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-white">Настройки парсера</h3>
 
-            {showSettings && (
-              <div className="p-4 border-t border-white/5 space-y-4">
-                {/* API Key */}
-                <div>
-                  <label className="text-xs text-white/50 mb-1 block">Steam API Key</label>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={e => setApiKey(e.target.value)}
-                    disabled={isRunning}
-                    placeholder="Ваш Steam API ключ"
-                    className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none font-mono disabled:opacity-50"
-                  />
-                  <div className="text-[10px] text-white/20 mt-1">
-                    Получить: <a href="https://steamcommunity.com/dev/apikey" target="_blank" className="text-indigo-400 hover:underline">steamcommunity.com/dev/apikey</a>
-                  </div>
-                </div>
-
-                {/* Start IDs */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs text-white/50">Начальные Steam ID</label>
-                    {startIds && (
-                      <span className="text-xs text-indigo-400">
-                        {startIds.split(/[\n,\s]+/).filter(id => id.trim() && /^[0-9]+$/.test(id.trim())).length} ID
-                      </span>
-                    )}
-                  </div>
-                  <textarea
-                    value={startIds}
-                    onChange={e => setStartIds(e.target.value)}
-                    disabled={isRunning}
-                    placeholder={"76561198123456789\n76561198987654321\n..."}
-                    className="w-full glass-input text-xs text-white p-3 rounded-xl outline-none h-24 resize-none font-mono disabled:opacity-50"
-                  />
-                </div>
-
-                {/* Price range */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-white/50 mb-1 block">Мин. цена ($)</label>
-                    <input
-                      type="number"
-                      value={minPrice}
-                      onChange={e => setMinPrice(Number(e.target.value))}
-                      disabled={isRunning}
-                      min={0}
-                      className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none disabled:opacity-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-white/50 mb-1 block">Макс. цена ($)</label>
-                    <input
-                      type="number"
-                      value={maxPrice}
-                      onChange={e => setMaxPrice(Number(e.target.value))}
-                      disabled={isRunning}
-                      min={0}
-                      className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none disabled:opacity-50"
-                    />
-                  </div>
-                </div>
-
-                {/* Depth and friends */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-xs text-white/50 mb-1 block">Глубина</label>
-                    <input
-                      type="number"
-                      value={maxDepth}
-                      onChange={e => setMaxDepth(Math.max(1, Math.min(5, Number(e.target.value))))}
-                      disabled={isRunning}
-                      min={1}
-                      max={5}
-                      className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none disabled:opacity-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-white/50 mb-1 block">Друзей/ур.</label>
-                    <input
-                      type="number"
-                      value={maxFriends}
-                      onChange={e => setMaxFriends(Math.max(1, Math.min(100, Number(e.target.value))))}
-                      disabled={isRunning}
-                      min={1}
-                      max={100}
-                      className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none disabled:opacity-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-white/50 mb-1 block">Потоков</label>
-                    <input
-                      type="number"
-                      value={threads}
-                      onChange={e => setThreads(Math.max(1, Math.min(10, Number(e.target.value))))}
-                      disabled={isRunning}
-                      min={1}
-                      max={10}
-                      className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none disabled:opacity-50"
-                    />
-                  </div>
-                </div>
-
-                {/* Info */}
-                <div className="text-[10px] text-white/30 space-y-1">
-                  <div>• Исключаются страны СНГ (RU, UA, BY, KZ и др.)</div>
-                  <div>• Парсер работает на сервере (не остановится при закрытии вкладки)</div>
-                  <div>• Результаты сохраняются в базу данных</div>
-                </div>
-              </div>
-            )}
+          <div className="flex items-start gap-2 p-2 rounded-lg bg-yellow-500/5 border border-yellow-500/10">
+            <AlertTriangle size={14} className="text-yellow-400 mt-0.5 shrink-0" />
+            <div className="text-[10px] text-yellow-300/70">
+              Парсер работает на сервере. Можно закрыть вкладку — парсинг продолжится. 
+              Генерирует случайные Steam ID и проверяет инвентарь CS2.
+            </div>
           </div>
 
-          {/* Controls */}
-          <div className="flex items-center gap-2">
-            {!isRunning && !isPaused ? (
-              <button
-                onClick={handleStart}
-                disabled={loading || !apiKey.trim()}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-green-500/20 text-green-400 text-sm hover:bg-green-500/30 transition-colors disabled:opacity-30"
-              >
-                {loading ? (
-                  <div className="w-4 h-4 border-2 border-green-400/30 border-t-green-400 rounded-full animate-spin" />
-                ) : (
-                  <Play size={16} />
-                )}
-                Запустить
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={handlePause}
-                  className="flex items-center gap-2 px-4 py-3 rounded-xl bg-yellow-500/20 text-yellow-400 text-sm hover:bg-yellow-500/30 transition-colors"
-                >
-                  {isPaused ? <Play size={16} /> : <Pause size={16} />}
-                  {isPaused ? 'Продолжить' : 'Пауза'}
-                </button>
-                <button
-                  onClick={handleStop}
-                  className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/20 text-red-400 text-sm hover:bg-red-500/30 transition-colors"
-                >
-                  <Square size={16} />
-                  Стоп
-                </button>
-              </>
-            )}
+          <div>
+            <label className="text-xs text-white/50 mb-1 block">Steam API Key (опционально — для имён/стран)</label>
+            <input type="text" value={apiKey} onChange={e => setApiKey(e.target.value)}
+              placeholder="Ваш Steam API ключ" className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none font-mono" />
+            <div className="text-[10px] text-white/20 mt-1">
+              Получить: <a href="https://steamcommunity.com/dev/apikey" target="_blank" className="text-indigo-400 hover:underline">steamcommunity.com/dev/apikey</a>
+            </div>
           </div>
 
-          {/* Stats */}
-          {currentJob && (
-            <div className="glass-card rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">Статистика</h3>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  currentJob.status === 'running' ? 'bg-green-500/20 text-green-400' :
-                  currentJob.status === 'paused' ? 'bg-yellow-500/20 text-yellow-400' :
-                  currentJob.status === 'completed' ? 'bg-blue-500/20 text-blue-400' :
-                  'bg-white/10 text-white/50'
-                }`}>
-                  {currentJob.status === 'running' ? '🟢 Работает' :
-                   currentJob.status === 'paused' ? '🟡 Пауза' :
-                   currentJob.status === 'completed' ? '🔵 Завершён' :
-                   currentJob.status}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-white/50">Начальные Steam ID (или случайные)</label>
+              {startIds && (
+                <span className="text-[10px] text-indigo-400">
+                  {startIds.split(/[\n,\s]+/).filter(id => id.trim() && /^[0-9]+$/.test(id.trim())).length} ID
                 </span>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-lg font-bold text-white">{currentJob.stats.checked}</div>
-                  <div className="text-[10px] text-white/40">Проверено</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-green-400">{currentJob.results.length}</div>
-                  <div className="text-[10px] text-white/40">Найдено</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-white">{currentJob.stats.inventoryChecked}</div>
-                  <div className="text-[10px] text-white/40">Инвентарей</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-red-400">{currentJob.stats.errors}</div>
-                  <div className="text-[10px] text-white/40">Ошибок</div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 text-[10px]">
-                <div className="flex justify-between">
-                  <span className="text-white/40">СНГ пропущено:</span>
-                  <span className="text-white/60">{currentJob.stats.skippedCis}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white/40">Приватных:</span>
-                  <span className="text-white/60">{currentJob.stats.skippedPrivate}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white/40">Уровень:</span>
-                  <span className="text-white/60">{currentJob.stats.currentLevel}</span>
-                </div>
-              </div>
-
-              {currentJob.stats.queueSize > 0 && (
-                <div className="text-[10px] text-white/30">
-                  В очереди: {currentJob.stats.queueSize} пользователей
-                </div>
               )}
             </div>
-          )}
+            <textarea value={startIds} onChange={e => setStartIds(e.target.value)}
+              placeholder={"76561198000000000\n76561198000000001\n...\n\nЕсли пусто — генерируются случайные ID"}
+              className="w-full glass-input text-xs text-white p-3 rounded-xl outline-none h-28 resize-none font-mono" />
+          </div>
 
-          {/* Logs */}
-          {currentJob?.logs && currentJob.logs.length > 0 && (
-            <div className="glass-card rounded-2xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-white/5">
-                <h3 className="text-sm font-semibold text-white">Логи</h3>
-              </div>
-              <div className="max-h-48 overflow-y-auto p-3 font-mono text-[10px] space-y-0.5">
-                {currentJob.logs.slice(-100).map((log, i) => (
-                  <div key={i} className={`${
-                    log.includes('НАЙДЕН') || log.includes('★') ? 'text-green-400' :
-                    log.includes('Ошибка') || log.includes('Error') ? 'text-red-400' :
-                    log.includes('Пропуск') ? 'text-yellow-400' :
-                    'text-white/50'
-                  }`}>
-                    {log}
-                  </div>
-                ))}
-                <div ref={logsEndRef} />
-              </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-white/50 mb-1 block">Мин. стоимость ($)</label>
+              <input type="number" value={minPrice} onChange={e => setMinPrice(parseInt(e.target.value) || 0)}
+                className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none" />
             </div>
-          )}
+            <div>
+              <label className="text-xs text-white/50 mb-1 block">Макс. стоимость ($)</label>
+              <input type="number" value={maxPrice} onChange={e => setMaxPrice(parseInt(e.target.value) || 10000)}
+                className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none" />
+            </div>
+          </div>
+
+          <button onClick={handleStart} disabled={loading || hasRunningJobs}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-green-500/20 text-green-400 text-sm hover:bg-green-500/30 transition-colors disabled:opacity-30">
+            {loading ? (
+              <><RefreshCw size={16} className="animate-spin" /> Запуск...</>
+            ) : hasRunningJobs ? (
+              <><RefreshCw size={16} className="animate-spin" /> Парсер уже работает</>
+            ) : (
+              <><Play size={16} /> Запустить парсер</>
+            )}
+          </button>
         </div>
 
-        {/* Results panel */}
+        {/* Active job */}
         <div className="space-y-4">
-          <div className="glass-card rounded-2xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Package size={16} className="text-green-400" />
-                <h3 className="text-sm font-semibold text-white">
-                  Результаты ({currentJob?.results.length || 0})
-                </h3>
-              </div>
-              
-              {currentJob?.results && currentJob.results.length > 0 && (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={copyAllResults}
-                    className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70"
-                    title="Копировать все ID"
-                  >
-                    {copiedId === 'all' ? <CheckCircle size={14} className="text-green-400" /> : <Copy size={14} />}
-                  </button>
-                  <button
-                    onClick={() => handleExport('txt')}
-                    className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white/70"
-                    title="Скачать TXT"
-                  >
-                    <Download size={14} />
-                  </button>
-                  <button
-                    onClick={handleClear}
-                    className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400/40 hover:text-red-400"
-                    title="Очистить"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="max-h-[500px] overflow-y-auto divide-y divide-white/5">
-              {!currentJob?.results || currentJob.results.length === 0 ? (
-                <div className="p-12 text-center">
-                  <Search size={48} className="mx-auto mb-4 text-white/10" />
-                  <div className="text-sm text-white/30">Нет результатов</div>
-                  <div className="text-xs text-white/20 mt-1">Запустите парсер для поиска</div>
-                </div>
-              ) : (
-                currentJob.results.map((result: ParserResult, i: number) => (
-                  <div key={result.steamId} className="px-4 py-3 hover:bg-white/5 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-white/30 w-6">#{i + 1}</span>
-                        <div>
-                          <div className="text-sm text-white font-mono">
-                            {result.steamId}
-                          </div>
-                          {result.profileName && (
-                            <div className="text-[10px] text-white/40">{result.profileName}</div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <div className="text-sm font-bold text-green-400">${result.inventoryValue.toFixed(2)}</div>
-                          <div className="text-[10px] text-white/30">{result.itemsCount} предметов</div>
-                        </div>
-                        <button
-                          onClick={() => copyToClipboard(result.steamId)}
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/60"
-                        >
-                          {copiedId === result.steamId ? (
-                            <CheckCircle size={14} className="text-green-400" />
-                          ) : (
-                            <Copy size={14} />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                    {result.country && (
-                      <div className="mt-1 text-[10px] text-white/20">
-                        🌍 {result.country} • {new Date(result.foundAt).toLocaleTimeString('ru')}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Export buttons */}
-          {currentJob?.results && currentJob.results.length > 0 && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handleExport('txt')}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-white/60 text-xs hover:bg-white/10 transition-colors"
-              >
-                <Download size={14} />
-                Скачать TXT
-              </button>
-              <button
-                onClick={() => handleExport('json')}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-white/60 text-xs hover:bg-white/10 transition-colors"
-              >
-                <Download size={14} />
-                Скачать JSON
-              </button>
-              <button
-                onClick={() => handleExport('csv')}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-white/60 text-xs hover:bg-white/10 transition-colors"
-              >
-                <Download size={14} />
-                Скачать CSV
-              </button>
+          {/* Job tabs */}
+          {jobs.length > 1 && (
+            <div className="flex gap-1 overflow-x-auto">
+              {jobs.map(job => (
+                <button key={job.id} onClick={() => setSelectedJob(job.id)}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                    (selectedJob || jobs[0]?.id) === job.id
+                      ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
+                  }`}>
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${
+                    job.status === 'running' ? 'bg-green-400 animate-pulse' :
+                    job.status === 'completed' ? 'bg-blue-400' :
+                    job.status === 'error' ? 'bg-red-400' : 'bg-gray-500'
+                  }`} />
+                  {job.id.slice(0, 8)}
+                </button>
+              ))}
             </div>
           )}
 
-          {/* Info */}
-          <div className="glass-card rounded-xl p-3 text-[10px] text-white/30 space-y-1">
-            <div className="flex items-center gap-1">
-              <AlertTriangle size={12} className="text-yellow-400" />
-              <span>Парсер работает на сервере в фоновом режиме</span>
+          {!activeJob ? (
+            <div className="glass-card rounded-2xl p-12 text-center">
+              <Search size={48} className="mx-auto mb-4 text-white/10" />
+              <div className="text-sm text-white/30">Нет заданий</div>
+              <div className="text-xs text-white/20 mt-1">Запустите парсер для начала поиска</div>
             </div>
-            <div>• Можно закрыть вкладку - парсер продолжит работу</div>
-            <div>• Результаты сохраняются в SQLite базу данных</div>
-            <div>• Многопоточность: до {threads} потоков параллельно</div>
-          </div>
+          ) : (
+            <div className="glass-card rounded-2xl p-4 space-y-4">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                    activeJob.status === 'running' ? 'bg-green-500/20 text-green-400' :
+                    activeJob.status === 'completed' ? 'bg-blue-500/20 text-blue-400' :
+                    activeJob.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                    'bg-yellow-500/20 text-yellow-400'
+                  }`}>
+                    {activeJob.status === 'running' && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
+                    {activeJob.status === 'running' ? 'Работает' :
+                     activeJob.status === 'completed' ? 'Завершён' :
+                     activeJob.status === 'error' ? 'Ошибка' : activeJob.status}
+                  </span>
+                  <span className="text-[10px] text-white/20 font-mono">{activeJob.id.slice(0, 12)}</span>
+                </div>
+                <div className="flex gap-1">
+                  {activeJob.status === 'running' && (
+                    <button onClick={() => handleStop(activeJob.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-red-400 bg-red-500/10 text-xs hover:bg-red-500/20">
+                      <Square size={12} /> Стоп
+                    </button>
+                  )}
+                  <button onClick={() => handleExport(activeJob.id)}
+                    className="p-1.5 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/5" title="Скачать .txt">
+                    <Download size={14} />
+                  </button>
+                  {activeJob.status !== 'running' && (
+                    <button onClick={() => handleClear(activeJob.id)}
+                      className="p-1.5 rounded-lg text-red-400/30 hover:text-red-400 hover:bg-red-500/10" title="Удалить">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-4 gap-2">
+                <div className="text-center p-2 rounded-lg bg-white/3">
+                  <div className="text-sm font-bold text-white">{activeJob.stats?.checked || 0}</div>
+                  <div className="text-[9px] text-white/40">Проверено</div>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-green-500/5">
+                  <div className="text-sm font-bold text-green-400">{activeJob.stats?.foundValuable || 0}</div>
+                  <div className="text-[9px] text-white/40">Найдено</div>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-white/3">
+                  <div className="text-sm font-bold text-white/60">{activeJob.stats?.skippedPrivate || 0}</div>
+                  <div className="text-[9px] text-white/40">Приватных</div>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-red-500/5">
+                  <div className="text-sm font-bold text-red-400">{activeJob.stats?.errors || 0}</div>
+                  <div className="text-[9px] text-white/40">Ошибки</div>
+                </div>
+              </div>
+
+              {/* Results */}
+              {activeJob.results && activeJob.results.length > 0 && (
+                <div>
+                  <div className="text-xs text-white/50 mb-2">
+                    Результаты ({activeJob.results.length})
+                  </div>
+                  <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl bg-black/20 p-2">
+                    {[...activeJob.results].reverse().map((r, i) => (
+                      <div key={i} className="flex items-center justify-between text-[11px] px-2 py-1 rounded-lg hover:bg-white/5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-green-400">✓</span>
+                          <a href={r.profileUrl} target="_blank" rel="noopener"
+                            className="text-white/70 hover:text-indigo-400 truncate">
+                            {r.profileName || r.steamId}
+                          </a>
+                          {r.country && r.country !== 'Unknown' && (
+                            <span className="text-[9px] text-white/20">{r.country}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-[10px] text-white/30">{r.itemsCount} шт</span>
+                          <span className="text-green-400 font-medium">${r.inventoryValue.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Logs */}
+              {activeJob.logs && activeJob.logs.length > 0 && (
+                <div>
+                  <div className="text-xs text-white/50 mb-2">Логи</div>
+                  <div ref={logsRef} className="max-h-32 overflow-y-auto rounded-xl bg-black/30 p-2 font-mono">
+                    {activeJob.logs.slice(-30).map((log, i) => (
+                      <div key={i} className={`text-[10px] py-0.5 ${
+                        log.includes('✅') || log.includes('Найден') ? 'text-green-400/80' :
+                        log.includes('ОШИБКА') || log.includes('error') ? 'text-red-400/80' :
+                        log.includes('Rate limit') ? 'text-yellow-400/80' :
+                        'text-white/30'
+                      }`}>
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Error */}
+              {activeJob.error && (
+                <div className="text-xs text-red-400 bg-red-500/10 rounded-lg p-2">
+                  Ошибка: {activeJob.error}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

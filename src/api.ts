@@ -155,7 +155,7 @@ export const steamApi = {
     }
   },
 
-  async addFriend(accountId: string, targetSteamId: string): Promise<{ success: boolean; error?: string }> {
+  async addFriend(accountId: string, targetSteamId: string): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/add-friend`, {
         method: 'POST',
@@ -178,7 +178,7 @@ export const steamApi = {
     }
   },
 
-  async updateProfile(accountId: string, data: { name?: string; country?: string; bio?: string; avatarUrl?: string }): Promise<{ success: boolean; error?: string }> {
+  async updateProfile(accountId: string, data: { name?: string; country?: string; bio?: string; avatarUrl?: string }): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/update-profile`, {
         method: 'POST',
@@ -191,7 +191,7 @@ export const steamApi = {
     }
   },
 
-  async spamFriends(accountId: string, message: string): Promise<{ success: boolean; sent: number; errors: number; logs: any[] }> {
+  async spamFriends(accountId: string, message: string): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/spam-friends`, {
         method: 'POST',
@@ -205,9 +205,8 @@ export const steamApi = {
   },
 };
 
-// Parser API - works on server, doesn't stop when tab closes
 export const parserApi = {
-  async startParser(config: ParserConfig): Promise<{ success: boolean; jobId?: string; error?: string }> {
+  async startParser(config: ParserConfig): Promise<any> {
     try {
       const res = await fetch('/api/parser/start', {
         method: 'POST',
@@ -220,7 +219,7 @@ export const parserApi = {
     }
   },
 
-  async stopParser(jobId: string): Promise<{ success: boolean; error?: string }> {
+  async stopParser(jobId: string): Promise<any> {
     try {
       const res = await fetch(`/api/parser/stop/${jobId}`, { method: 'POST' });
       return await res.json();
@@ -229,7 +228,7 @@ export const parserApi = {
     }
   },
 
-  async pauseParser(jobId: string): Promise<{ success: boolean; error?: string }> {
+  async pauseParser(jobId: string): Promise<any> {
     try {
       const res = await fetch(`/api/parser/pause/${jobId}`, { method: 'POST' });
       return await res.json();
@@ -238,7 +237,7 @@ export const parserApi = {
     }
   },
 
-  async resumeParser(jobId: string): Promise<{ success: boolean; error?: string }> {
+  async resumeParser(jobId: string): Promise<any> {
     try {
       const res = await fetch(`/api/parser/resume/${jobId}`, { method: 'POST' });
       return await res.json();
@@ -267,7 +266,7 @@ export const parserApi = {
     }
   },
 
-  async getParserResults(jobId: string): Promise<{ results: any[]; total: number }> {
+  async getParserResults(jobId: string): Promise<any> {
     try {
       const res = await fetch(`/api/parser/results/${jobId}`);
       return await res.json();
@@ -285,7 +284,7 @@ export const parserApi = {
     }
   },
 
-  async clearResults(jobId: string): Promise<{ success: boolean }> {
+  async clearResults(jobId: string): Promise<any> {
     try {
       const res = await fetch(`/api/parser/clear/${jobId}`, { method: 'DELETE' });
       return await res.json();

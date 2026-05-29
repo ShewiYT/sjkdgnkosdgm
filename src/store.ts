@@ -4,8 +4,7 @@ import { steamApi } from './api';
 import { sendNotification, NotificationTemplates, DiscordTemplates } from './notifications';
 import type {
   SteamAccount, ChatMessage, TradeOffer, Worker, MaFile, User,
-  DomainConfig, NotificationSettings, FriendRequestLog,
-  SpammerLog
+  DomainConfig, NotificationSettings, FriendRequestLog, SpammerLog
 } from './types';
 
 interface AppStore {
@@ -18,7 +17,6 @@ interface AppStore {
   updateWorker: (id: string, data: Partial<Worker>) => void;
   removeWorker: (id: string) => void;
   loadWorkers: () => void;
-
   accounts: SteamAccount[];
   addAccount: (login: string, password: string, maFile?: MaFile) => void;
   addAccounts: (accountsData: { login: string; password: string; maFile?: MaFile }[]) => void;
@@ -33,24 +31,18 @@ interface AppStore {
   refreshStatuses: () => Promise<void>;
   loadAccountsFromServer: () => Promise<void>;
   saveAccountsToServer: () => Promise<void>;
-
   messages: ChatMessage[];
   addMessage: (message: ChatMessage) => void;
   fetchNewMessages: () => Promise<void>;
   sendMessage: (accountId: string, friendSteamId: string, friendName: string, text: string) => Promise<boolean>;
-
   tradeOffers: TradeOffer[];
-
   domains: DomainConfig[];
   addDomain: (domain: string, target: 'panel' | 'api') => void;
   removeDomain: (id: string) => void;
   updateDomain: (id: string, data: Partial<DomainConfig>) => void;
-
   notificationSettings: NotificationSettings;
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => void;
   notify: (tgMsg: string, discordMsg: string) => Promise<void>;
-
-  // Friend request system - NEW (load Steam IDs)
   steamIdsToAdd: string;
   setSteamIdsToAdd: (ids: string) => void;
   friendRequestLogs: FriendRequestLog[];
@@ -58,8 +50,6 @@ interface AppStore {
   startFriendRequests: (steamIds: string[], requestsPerAccount: number, delaySeconds: number) => Promise<void>;
   stopFriendRequests: () => void;
   addFriendRequestLog: (log: FriendRequestLog) => void;
-
-  // Spammer
   spammerRunning: boolean;
   spammerMessage: string;
   spammerDelay: number;
@@ -71,7 +61,6 @@ interface AppStore {
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
-
 const avatarEmojis = ['🎮', '👾', '🕹️', '🎯', '🔫', '⚔️', '🛡️', '💀', '🤖', '👽', '🐉', '🦊', '🐺', '🦅', '🦈'];
 const servers = ['EU-1', 'EU-2', 'EU-3', 'RU-1', 'RU-2', 'US-1', 'US-2'];
 
@@ -276,7 +265,6 @@ export const useAppStore = create<AppStore>()(
         }));
         set(state => ({ accounts: [...state.accounts, ...newAccounts] }));
         get().saveAccountsToServer();
-
         const ns = get().notificationSettings;
         if (ns.notifyAccountsLoaded) {
           get().notify(
@@ -323,13 +311,11 @@ export const useAppStore = create<AppStore>()(
       connectAccount: async (id) => {
         const acc = get().accounts.find(a => a.id === id);
         if (!acc) return;
-
         set(state => ({
           accounts: state.accounts.map(a =>
             a.id === id ? { ...a, status: 'connecting' as const, errorMessage: undefined } : a
           )
         }));
-
         try {
           const result = await steamApi.login(id, acc.login, acc.password, acc.maFile?.shared_secret, acc.maFile?.identity_secret);
           if (result.success || result.status === 'online') {
@@ -436,9 +422,7 @@ export const useAppStore = create<AppStore>()(
       },
 
       addMessage: (message) => {
-        set(state => ({
-          messages: [...state.messages, message].slice(-500)
-        }));
+        set(state => ({ messages: [...state.messages, message].slice(-500) }));
       },
 
       fetchNewMessages: async () => {
@@ -449,9 +433,7 @@ export const useAppStore = create<AppStore>()(
               const existingIds = new Set(state.messages.map(m => m.id));
               const uniqueNew = newMessages.filter(m => !existingIds.has(m.id));
               if (uniqueNew.length === 0) return state;
-              return {
-                messages: [...state.messages, ...uniqueNew].slice(-500)
-              };
+              return { messages: [...state.messages, ...uniqueNew].slice(-500) };
             });
           }
         } catch { /* ignore */ }
@@ -507,15 +489,11 @@ export const useAppStore = create<AppStore>()(
       },
 
       updateDomain: (id, data) => {
-        set(state => ({
-          domains: state.domains.map(d => d.id === id ? { ...d, ...data } : d)
-        }));
+        set(state => ({ domains: state.domains.map(d => d.id === id ? { ...d, ...data } : d) }));
       },
 
       updateNotificationSettings: (settings) => {
-        set(state => ({
-          notificationSettings: { ...state.notificationSettings, ...settings }
-        }));
+        set(state => ({ notificationSettings: { ...state.notificationSettings, ...settings } }));
       },
 
       notify: async (tgMsg, discordMsg) => {
@@ -523,121 +501,75 @@ export const useAppStore = create<AppStore>()(
         await sendNotification(ns, tgMsg, discordMsg);
       },
 
-      // Friend request system - Load Steam IDs and add
       setSteamIdsToAdd: (ids) => set({ steamIdsToAdd: ids }),
 
       addFriendRequestLog: (log) => {
-        set(state => ({
-          friendRequestLogs: [...state.friendRequestLogs, log].slice(-1000)
-        }));
+        set(state => ({ friendRequestLogs: [...state.friendRequestLogs, log].slice(-1000) }));
       },
 
       startFriendRequests: async (steamIds: string[], requestsPerAccount: number, delaySeconds: number) => {
         _friendRequestAbort = false;
         set({ friendRequestRunning: true, friendRequestLogs: [] });
-
         const accounts = get().getVisibleAccounts().filter(a => a.status === 'online' || a.status === 'in-game');
-        
         if (accounts.length === 0 || steamIds.length === 0) {
           set({ friendRequestRunning: false });
           return;
         }
-
         get().addFriendRequestLog({
-          id: generateId(),
-          accountId: 'system',
-          accountLogin: 'СИСТЕМА',
-          targetSteamId: '',
-          targetName: '',
-          foundVia: '',
-          status: 'sent',
+          id: generateId(), accountId: 'system', accountLogin: 'СИСТЕМА',
+          targetSteamId: '', targetName: '', foundVia: '', status: 'sent',
           timestamp: new Date().toISOString(),
           error: `Запуск: ${accounts.length} аккаунтов, ${steamIds.length} целей, по ${requestsPerAccount} на аккаунт`
         });
-
-        // Distribute Steam IDs across accounts
         let steamIdIndex = 0;
-        
         for (const acc of accounts) {
           if (_friendRequestAbort) {
             get().addFriendRequestLog({
-              id: generateId(),
-              accountId: 'system',
-              accountLogin: 'СИСТЕМА',
-              targetSteamId: '',
-              targetName: '',
-              foundVia: '',
-              status: 'error',
-              timestamp: new Date().toISOString(),
-              error: 'Остановлено пользователем'
+              id: generateId(), accountId: 'system', accountLogin: 'СИСТЕМА',
+              targetSteamId: '', targetName: '', foundVia: '', status: 'error',
+              timestamp: new Date().toISOString(), error: 'Остановлено пользователем'
             });
             break;
           }
-
           let sentForThisAccount = 0;
-
-          while (sentForThisAccount < requestsPerAccount && steamIdIndex < steamIds.length) {
-            if (_friendRequestAbort) break;
-
-            const targetSteamId = steamIds[steamIdIndex];
+          while (sentForThisAccount < requestsPerAccount && steamIdIndex < steamIds.length && !_friendRequestAbort) {
+            const targetId = steamIds[steamIdIndex];
             steamIdIndex++;
-
-            // Send friend request
-            const result = await steamApi.addFriend(acc.id, targetSteamId);
-
-            const log: FriendRequestLog = {
-              id: generateId(),
-              accountId: acc.id,
-              accountLogin: acc.login,
-              targetSteamId: targetSteamId,
-              targetName: '',
-              foundVia: '',
-              status: result.success ? 'sent' : 'error',
-              timestamp: new Date().toISOString(),
-              error: result.success ? undefined : (result.error || 'Ошибка отправки'),
-            };
-            get().addFriendRequestLog(log);
-
-            if (result.success) {
-              sentForThisAccount++;
+            try {
+              const result = await steamApi.addFriend(acc.id, targetId);
+              get().addFriendRequestLog({
+                id: generateId(), accountId: acc.id, accountLogin: acc.login,
+                targetSteamId: targetId, targetName: result.name || targetId,
+                foundVia: 'manual', status: result.success ? 'sent' : 'error',
+                timestamp: new Date().toISOString(), error: result.error
+              });
+            } catch {
+              get().addFriendRequestLog({
+                id: generateId(), accountId: acc.id, accountLogin: acc.login,
+                targetSteamId: targetId, targetName: targetId,
+                foundVia: 'manual', status: 'error',
+                timestamp: new Date().toISOString(), error: 'Network error'
+              });
             }
-
-            // Delay between requests
+            sentForThisAccount++;
             await new Promise(r => setTimeout(r, delaySeconds * 1000));
           }
-
           get().addFriendRequestLog({
-            id: generateId(),
-            accountId: acc.id,
-            accountLogin: acc.login,
-            targetSteamId: '',
-            targetName: '',
-            foundVia: '',
-            status: 'sent',
-            timestamp: new Date().toISOString(),
-            error: `Завершено: ${sentForThisAccount} запросов`
+            id: generateId(), accountId: acc.id, accountLogin: acc.login,
+            targetSteamId: '', targetName: '', foundVia: '', status: 'sent',
+            timestamp: new Date().toISOString(), error: `Завершено: ${sentForThisAccount} запросов`
           });
-
-          // Small delay between accounts
           await new Promise(r => setTimeout(r, 1000));
         }
-
         const finalLogs = get().friendRequestLogs;
         const totalSent = finalLogs.filter(l => l.status === 'sent' && l.targetSteamId).length;
         const totalErrors = finalLogs.filter(l => l.status === 'error' && l.targetSteamId).length;
-
         get().addFriendRequestLog({
-          id: generateId(),
-          accountId: 'system',
-          accountLogin: 'СИСТЕМА',
-          targetSteamId: '',
-          targetName: '',
-          foundVia: '',
-          status: 'sent',
+          id: generateId(), accountId: 'system', accountLogin: 'СИСТЕМА',
+          targetSteamId: '', targetName: '', foundVia: '', status: 'sent',
           timestamp: new Date().toISOString(),
           error: `Готово! Отправлено: ${totalSent}, Ошибок: ${totalErrors}`
         });
-
         set({ friendRequestRunning: false });
       },
 
@@ -646,92 +578,60 @@ export const useAppStore = create<AppStore>()(
         set({ friendRequestRunning: false });
       },
 
-      // Spammer
       setSpammerMessage: (msg) => set({ spammerMessage: msg }),
       setSpammerDelay: (delay) => set({ spammerDelay: delay }),
 
       startSpammer: async () => {
         _spammerAbort = false;
         set({ spammerRunning: true, spammerLogs: [] });
-
         const message = get().spammerMessage;
         const delay = get().spammerDelay;
         if (!message.trim()) {
           set({ spammerRunning: false });
           return;
         }
-
         const accounts = get().getVisibleAccounts().filter(a => a.status === 'online' || a.status === 'in-game');
-
         const log0: SpammerLog = {
-          id: generateId(),
-          accountLogin: 'СИСТЕМА',
-          friendName: '',
-          friendSteamId: '',
-          status: 'sent',
-          timestamp: new Date().toISOString(),
+          id: generateId(), accountLogin: 'СИСТЕМА', friendName: '', friendSteamId: '',
+          status: 'sent', timestamp: new Date().toISOString(),
           error: `Запуск спамера для ${accounts.length} аккаунтов`,
         };
         set(state => ({ spammerLogs: [...state.spammerLogs, log0] }));
-
         for (const acc of accounts) {
           if (_spammerAbort) break;
-
           const friends = await steamApi.getFriends(acc.id);
           const existingConversations = new Set(
-            get().messages
-              .filter(m => m.accountId === acc.id)
-              .map(m => m.friendId)
+            get().messages.filter(m => m.accountId === acc.id).map(m => m.friendId)
           );
-
           const targetsToSpam = friends.filter(f => !existingConversations.has(f.steamId));
-
           const logAcc: SpammerLog = {
-            id: generateId(),
-            accountLogin: acc.login,
-            friendName: '',
-            friendSteamId: '',
-            status: 'sent',
-            timestamp: new Date().toISOString(),
+            id: generateId(), accountLogin: acc.login, friendName: '', friendSteamId: '',
+            status: 'sent', timestamp: new Date().toISOString(),
             error: `${friends.length} друзей, ${targetsToSpam.length} без переписки`,
           };
           set(state => ({ spammerLogs: [...state.spammerLogs, logAcc] }));
-
           for (const friend of targetsToSpam) {
             if (_spammerAbort) break;
-
             const success = await steamApi.sendMessage(acc.id, friend.steamId, message);
-
             const log: SpammerLog = {
-              id: generateId(),
-              accountLogin: acc.login,
-              friendName: friend.name || friend.steamId,
-              friendSteamId: friend.steamId,
-              status: success ? 'sent' : 'error',
-              timestamp: new Date().toISOString(),
+              id: generateId(), accountLogin: acc.login,
+              friendName: friend.name || friend.steamId, friendSteamId: friend.steamId,
+              status: success ? 'sent' : 'error', timestamp: new Date().toISOString(),
               error: success ? undefined : 'Не удалось отправить',
             };
-
-            set(state => ({
-              spammerLogs: [...state.spammerLogs, log]
-            }));
-
+            set(state => ({ spammerLogs: [...state.spammerLogs, log] }));
             await new Promise(r => setTimeout(r, delay * 1000));
           }
-
           await new Promise(r => setTimeout(r, 2000));
         }
-
         const logEnd: SpammerLog = {
-          id: generateId(),
-          accountLogin: 'СИСТЕМА',
-          friendName: '',
-          friendSteamId: '',
-          status: 'sent',
-          timestamp: new Date().toISOString(),
-          error: 'Спамер завершён',
+          id: generateId(), accountLogin: 'СИСТЕМА', friendName: '', friendSteamId: '',
+          status: 'sent', timestamp: new Date().toISOString(), error: 'Спамер завершён',
         };
-        set(state => ({ spammerLogs: [...state.spammerLogs, logEnd], spammerRunning: false }));
+        set(state => ({
+          spammerLogs: [...state.spammerLogs, logEnd],
+          spammerRunning: false
+        }));
       },
 
       stopSpammer: () => {

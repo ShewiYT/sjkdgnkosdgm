@@ -13,7 +13,7 @@ export default function AccountBar({ accounts, selectedAccount, onSelectAccount,
   const allOnline = onlineCount === accounts.length && accounts.length > 0;
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-b border-white/5 bg-dark-800/50 overflow-x-auto">
+    <div className="flex items-center gap-2 px-4 py-2 bg-dark-800 border-b border-white/5 overflow-x-auto">
       <button
         onClick={() => onSelectAccount(null)}
         className={`shrink-0 px-3 py-1.5 rounded-lg text-xs transition-colors ${
@@ -42,16 +42,12 @@ export default function AccountBar({ accounts, selectedAccount, onSelectAccount,
         </button>
       ))}
 
-      <div className="ml-auto flex items-center gap-2 shrink-0">
-        <span className="text-[10px] text-white/30">
-          {onlineCount}/{accounts.length} онлайн
-        </span>
+      <div className="ml-auto shrink-0 flex items-center gap-2">
+        <span className="text-[10px] text-white/30">{onlineCount}/{accounts.length} онлайн</span>
         <button
           onClick={onConnectAll}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-            allOnline
-              ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
-              : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
+          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+            allOnline ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
           }`}
         >
           {allOnline ? <PowerOff size={12} /> : <Power size={12} />}

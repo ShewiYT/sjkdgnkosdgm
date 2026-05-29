@@ -59,16 +59,30 @@ export default function SettingsView() {
               onClick={exportData}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-white/60 text-xs hover:bg-white/10 transition-colors"
             >
-              <Download size={14} />
-              Экспорт JSON
+              <Download size={14} /> Экспорт JSON
             </button>
             <button
               onClick={exportAccounts}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-white/60 text-xs hover:bg-white/10 transition-colors"
             >
-              <Download size={14} />
-              Экспорт login:pass
+              <Download size={14} /> Экспорт login:pass
             </button>
+          </div>
+        </div>
+
+        <div className="glass-card rounded-2xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Database size={16} className="text-green-400" />
+            База данных SQLite
+          </h3>
+          <div className="text-xs text-white/40 space-y-1">
+            <div>📁 Файл: <code className="text-indigo-400">./data/sukacombine.db</code></div>
+            <div>📊 Таблицы: users, workers, accounts, messages, trade_offers, parser_keys, parse_jobs, settings</div>
+            <div>⚡ WAL mode для лучшей производительности</div>
+            <div>🔄 Автосохранение при каждом изменении</div>
+          </div>
+          <div className="text-[10px] text-white/20">
+            Бэкап: <code>cp ./data/sukacombine.db ./data/backup_$(date +%Y%m%d).db</code>
           </div>
         </div>
 
@@ -82,14 +96,13 @@ export default function SettingsView() {
             }}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs hover:bg-red-500/20 transition-colors"
           >
-            <Trash2 size={14} />
-            Очистить все аккаунты
+            <Trash2 size={14} /> Очистить все аккаунты
           </button>
         </div>
 
         <div className="glass-card rounded-2xl p-4">
           <div className="text-sm text-white font-medium mb-1">SukaCombine v3.0</div>
-          <div className="text-xs text-white/30">Steam Panel • Suka Team</div>
+          <div className="text-xs text-white/30">Steam Panel • SQLite DB • Suka Team</div>
           <div className="text-[10px] text-white/20 mt-2">
             Аккаунтов: {accounts.length} •
             Онлайн: {accounts.filter(a => a.status === 'online' || a.status === 'in-game').length}

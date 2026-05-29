@@ -42,8 +42,7 @@ export default function DomainsView() {
             <option value="api" className="bg-gray-900">API</option>
           </select>
           <button onClick={handleAdd} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-400 text-sm hover:bg-indigo-500/30 transition-colors">
-            <Plus size={14} />
-            Добавить
+            <Plus size={14} /> Добавить
           </button>
         </div>
       </div>
