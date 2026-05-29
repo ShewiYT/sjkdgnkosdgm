@@ -19,17 +19,16 @@ export default function BrowserView({ accounts, selectedAccount }: BrowserViewPr
   const [url, setUrl] = useState('https://store.steampowered.com');
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-
   const account = selectedAccount || accounts.find(a => a.status === 'online');
 
-  const openBrowser = async () => {
+  const openBrowser = () => {
     if (!account) return;
     setLoading(true);
     setIsOpen(true);
     setLoading(false);
   };
 
-  const navigate = async (newUrl: string) => {
+  const navigate = (newUrl: string) => {
     setUrl(newUrl);
     setLoading(true);
     setTimeout(() => setLoading(false), 500);
@@ -46,59 +45,33 @@ export default function BrowserView({ accounts, selectedAccount }: BrowserViewPr
       </div>
 
       <div className="flex items-center gap-2">
-        <button className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white/60">
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-        <button className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white/60">
-          <ArrowRight className="w-4 h-4" />
-        </button>
+        <button className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white/60"><ArrowLeft className="w-4 h-4" /></button>
+        <button className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white/60"><ArrowRight className="w-4 h-4" /></button>
         <button className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white/60">
           <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
-
         <div className="flex-1 relative">
           <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
           <input
-            type="text"
-            value={url}
-            onChange={e => setUrl(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                if (isOpen) navigate(url);
-                else openBrowser();
-              }
-            }}
+            type="text" value={url} onChange={e => setUrl(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { if (isOpen) navigate(url); else openBrowser(); } }}
             placeholder="https://store.steampowered.com"
             className="w-full glass-input text-sm text-white pl-9 pr-4 py-2 rounded-xl outline-none"
           />
         </div>
-
         {!isOpen ? (
-          <button
-            onClick={openBrowser}
-            disabled={!account}
-            className="glass-btn px-4 py-2 rounded-xl text-sm flex items-center gap-2 disabled:opacity-30"
-          >
-            <ExternalLink className="w-4 h-4" />
-            Открыть
+          <button onClick={openBrowser} disabled={!account} className="glass-btn px-4 py-2 rounded-xl text-sm flex items-center gap-2 disabled:opacity-30">
+            <ExternalLink className="w-4 h-4" /> Открыть
           </button>
         ) : (
-          <button
-            onClick={() => setIsOpen(false)}
-            className="px-4 py-2 rounded-xl bg-red-500/20 text-red-400 text-sm"
-          >
-            Закрыть
-          </button>
+          <button onClick={() => setIsOpen(false)} className="px-4 py-2 rounded-xl bg-red-500/20 text-red-400 text-sm">Закрыть</button>
         )}
       </div>
 
       <div className="flex flex-wrap gap-2">
         {quickLinks.map(link => (
-          <button
-            key={link.url}
-            onClick={() => navigate(link.url)}
-            className="px-3 py-1.5 rounded-lg bg-white/5 text-white/50 text-xs hover:bg-white/10 hover:text-white/70"
-          >
+          <button key={link.url} onClick={() => navigate(link.url)}
+            className="px-3 py-1.5 rounded-lg bg-white/5 text-white/50 text-xs hover:bg-white/10 hover:text-white/70">
             {link.label}
           </button>
         ))}

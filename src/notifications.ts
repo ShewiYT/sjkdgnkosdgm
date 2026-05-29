@@ -56,7 +56,7 @@ export async function sendNotification(
 
 export const NotificationTemplates = {
   accountsLoaded: (count: number) =>
-    `🔄 <b>Загружены аккаунты</b>\nКоличество: ${count} шт.`,
+    `🔄 <b>Загружены аккаунты</b>\nКоличество: <b>${count}</b> шт.`,
   newMessage: (senderName: string, steamId: string, preview: string) =>
     `💬 <b>Новое сообщение</b>\nОт: ${senderName} (${steamId})\nСообщение: ${preview.substring(0, 100)}`,
   accountLogin: (login: string, status: string) =>

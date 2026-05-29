@@ -35,90 +35,26 @@ export default function Offers({ accounts, offers }: OffersProps) {
                     <div>
                       <div className="text-sm text-white font-medium">{offer.partnerName}</div>
                       <div className="text-[10px] text-white/30">
-                        {acc ? `через ${acc.login}` : ''} •{' '}
-                        {new Date(offer.timestamp).toLocaleString('ru')}
+                        {acc ? `через ${acc.login}` : ''} • {new Date(offer.timestamp).toLocaleString('ru')}
                       </div>
                     </div>
                   </div>
-                  <span
-                    className={`text-xs px-3 py-1 rounded-full ${
-                      offer.status === 'pending'
-                        ? 'bg-yellow-500/20 text-yellow-400'
-                        : offer.status === 'accepted'
-                        ? 'bg-green-500/20 text-green-400'
-                        : 'bg-red-500/20 text-red-400'
-                    }`}
-                  >
+                  <span className={`text-xs px-3 py-1 rounded-full ${
+                    offer.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                    offer.status === 'accepted' ? 'bg-green-500/20 text-green-400' :
+                    'bg-red-500/20 text-red-400'
+                  }`}>
                     <span className="flex items-center gap-1">
-                      {offer.status === 'pending' ? (
-                        <Clock size={10} />
-                      ) : offer.status === 'accepted' ? (
-                        <Check size={10} />
-                      ) : (
-                        <X size={10} />
-                      )}
-                      {offer.status === 'pending'
-                        ? 'Ожидает'
-                        : offer.status === 'accepted'
-                        ? 'Принят'
-                        : 'Отклонен'}
+                      {offer.status === 'pending' ? <Clock size={10} /> : offer.status === 'accepted' ? <Check size={10} /> : <X size={10} />}
+                      {offer.status === 'pending' ? 'Ожидает' : offer.status === 'accepted' ? 'Принят' : 'Отклонен'}
                     </span>
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-[10px] text-red-400/70 mb-1">
-                      Отдаём ({offer.itemsGive.length})
-                    </div>
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                      {offer.itemsGive.map(item => (
-                        <div
-                          key={item.id}
-                          className="text-xs text-white/60 bg-red-500/5 px-2 py-1 rounded"
-                        >
-                          {item.name}{' '}
-                          {item.price > 0 && (
-                            <span className="text-white/30">${item.price.toFixed(2)}</span>
-                          )}
-                        </div>
-                      ))}
-                      {offer.itemsGive.length === 0 && (
-                        <div className="text-xs text-white/20">Ничего</div>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-green-400/70 mb-1">
-                      Получаем ({offer.itemsReceive.length})
-                    </div>
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                      {offer.itemsReceive.map(item => (
-                        <div
-                          key={item.id}
-                          className="text-xs text-white/60 bg-green-500/5 px-2 py-1 rounded"
-                        >
-                          {item.name}{' '}
-                          {item.price > 0 && (
-                            <span className="text-white/30">${item.price.toFixed(2)}</span>
-                          )}
-                        </div>
-                      ))}
-                      {offer.itemsReceive.length === 0 && (
-                        <div className="text-xs text-white/20">Ничего</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
                 {offer.status === 'pending' && (
                   <div className="flex gap-2 mt-3 pt-3 border-t border-white/5">
-                    <button className="flex items-center gap-1 px-4 py-2 rounded-xl bg-green-500/20 text-green-400 text-xs hover:bg-green-500/30 transition-colors">
-                      <Check size={12} /> Принять
-                    </button>
-                    <button className="flex items-center gap-1 px-4 py-2 rounded-xl bg-red-500/20 text-red-400 text-xs hover:bg-red-500/30 transition-colors">
-                      <X size={12} /> Отклонить
-                    </button>
+                    <button className="flex items-center gap-1 px-4 py-2 rounded-xl bg-green-500/20 text-green-400 text-xs hover:bg-green-500/30"><Check size={12} /> Принять</button>
+                    <button className="flex items-center gap-1 px-4 py-2 rounded-xl bg-red-500/20 text-red-400 text-xs hover:bg-red-500/30"><X size={12} /> Отклонить</button>
                   </div>
                 )}
               </div>

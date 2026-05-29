@@ -60,7 +60,7 @@ export const steamApi = {
       });
       return await res.json();
     } catch {
-      return { error: 'Сервер недоступен' };
+      return { error: 'Сервер недоступен. Убедитесь что server.js запущен с steam-user.' };
     }
   },
 
@@ -213,57 +213,30 @@ export const steamApi = {
     }
   },
 
-  async getInventoryValue(steamId: string, _steamApiKey: string): Promise<number> {
+  async getInventoryValue(steamId: string): Promise<{
+    totalValue: number;
+    itemCount: number;
+    pricedItems: number;
+    unpricedItems: number;
+    pricingComplete: boolean;
+    items: { name: string; price: number; count: number }[];
+    error?: string;
+  }> {
     try {
-      const invRes = await fetch(
-        `https://steamcommunity.com/inventory/${steamId}/730/2?l=english&count=500`,
-        { headers: { 'Accept': 'application/json' } }
-      );
-      if (!invRes.ok) return 0;
-      const invData = await invRes.json();
-      if (!invData.success || !invData.assets || !invData.assets.length) return 0;
-
-      const assets: { classid: string; instanceid: string }[] = invData.assets;
-      const descriptions: { classid: string; instanceid: string; market_hash_name: string; marketable: number }[] =
-        invData.descriptions || [];
-
-      const descMap: Record<string, string> = {};
-      for (const d of descriptions) {
-        if (d.marketable) {
-          descMap[`${d.classid}_${d.instanceid}`] = d.market_hash_name;
-        }
-      }
-
-      const sample = assets.slice(0, 15);
-      let totalSampled = 0;
-      let pricedCount = 0;
-
-      for (const asset of sample) {
-        const key = `${asset.classid}_${asset.instanceid}`;
-        const hashName = descMap[key];
-        if (!hashName) continue;
-        try {
-          const priceRes = await fetch(
-            `https://steamcommunity.com/market/priceoverview/?appid=730&currency=1&market_hash_name=${encodeURIComponent(hashName)}`
-          );
-          if (!priceRes.ok) continue;
-          const priceData = await priceRes.json();
-          if (priceData.success && priceData.lowest_price) {
-            const price = parseFloat(priceData.lowest_price.replace(/[$,]/g, ''));
-            if (!isNaN(price)) {
-              totalSampled += price;
-              pricedCount++;
-            }
-          }
-          await new Promise(r => setTimeout(r, 300));
-        } catch { /* ignore */ }
-      }
-
-      if (pricedCount === 0) return 0;
-      const avgPrice = totalSampled / pricedCount;
-      return parseFloat((avgPrice * assets.length).toFixed(2));
+      const res = await fetch(`/api/inventory/${steamId}`);
+      if (!res.ok) return { totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, pricingComplete: true, items: [], error: `HTTP ${res.status}` };
+      const data = await res.json();
+      return {
+        totalValue: data.totalValue || 0,
+        itemCount: data.itemCount || 0,
+        pricedItems: data.pricedItems || 0,
+        unpricedItems: data.unpricedItems || 0,
+        pricingComplete: data.pricingComplete ?? true,
+        items: data.items || [],
+        error: data.error || undefined,
+      };
     } catch {
-      return 0;
+      return { totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, pricingComplete: true, items: [], error: 'Сервер недоступен' };
     }
   },
 };
@@ -329,7 +302,7 @@ export const parserApi = {
     }
   },
 
-  async getParserResults(jobId: string): Promise<{ results: ParserJob['results']; total: number }> {
+  async getParserResults(jobId: string): Promise<Record<string, unknown>> {
     try {
       const res = await fetch(`/api/parser/results/${jobId}`);
       return await res.json();

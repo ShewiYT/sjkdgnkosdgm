@@ -30,6 +30,7 @@ export default function App() {
     disconnectAll,
     refreshStatuses,
     loadAccountsFromServer,
+    checkServerConnection,
   } = useAppStore();
 
   const [activeView, setActiveView] = useState<ActiveView>('import');
@@ -41,10 +42,13 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     loadAccountsFromServer();
+    checkServerConnection();
     refreshStatuses();
-    const interval = setInterval(refreshStatuses, 10000);
+    const interval = setInterval(() => {
+      refreshStatuses();
+    }, 10000);
     return () => clearInterval(interval);
-  }, [currentUser, refreshStatuses, loadAccountsFromServer]);
+  }, [currentUser, refreshStatuses, loadAccountsFromServer, checkServerConnection]);
 
   if (!currentUser) {
     return <LoginPage />;
@@ -78,7 +82,7 @@ export default function App() {
       case 'spammer':
         return <Spammer accounts={accounts} />;
       case 'friends':
-        return <FriendsManager accounts={accounts} selectedAccount={selectedAccount} />;
+        return <FriendsManager accounts={accounts} />;
       case 'parser':
         return <SteamParser />;
       case 'account-manager':
@@ -90,12 +94,12 @@ export default function App() {
       case 'notifications':
         return <NotificationsView />;
       case 'domains':
-        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/40">Нет доступа</div>;
+        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/30">Нет доступа</div>;
       case 'workers':
         return isAdmin ? (
           <Workers accounts={accounts} />
         ) : (
-          <div className="p-6 text-white/40">Нет доступа</div>
+          <div className="p-6 text-white/30">Нет доступа</div>
         );
       case 'settings':
         return <SettingsView accounts={accounts} />;
@@ -105,7 +109,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-dark-900 overflow-hidden">
+    <div className="flex h-screen bg-dark-900">
       <Sidebar
         activeView={activeView}
         setActiveView={setActiveView}
@@ -115,8 +119,7 @@ export default function App() {
         onLogout={logout}
         username={currentUser.username}
       />
-
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0">
         <AccountBar
           accounts={accounts}
           selectedAccount={selectedAccount}
@@ -124,10 +127,7 @@ export default function App() {
           onConnectAll={handleConnectAll}
           onlineCount={onlineCount}
         />
-
-        <div className="flex-1 overflow-hidden">
-          {renderView()}
-        </div>
+        {renderView()}
       </div>
     </div>
   );

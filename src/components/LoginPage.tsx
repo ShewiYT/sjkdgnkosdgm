@@ -27,7 +27,7 @@ export default function LoginPage() {
             ST
           </div>
           <h1 className="text-xl font-bold text-white">SukaCombine</h1>
-          <p className="text-white/40 text-sm">Steam Panel v3.0 • SQLite DB</p>
+          <p className="text-white/40 text-sm">Steam Panel v3.1 • Real Steam Connection</p>
         </div>
 
         {error && (
@@ -83,7 +83,7 @@ export default function LoginPage() {
         <div className="text-center">
           <div className="text-[10px] text-white/20 space-y-0.5">
             <div>🗄️ Серверная БД: SQLite</div>
-            <div>Данные: ./data/sukacombine.db</div>
+            <div>🔌 Требуется server.js с steam-user</div>
           </div>
         </div>
       </div>

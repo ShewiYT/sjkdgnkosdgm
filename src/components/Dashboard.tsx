@@ -1,15 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  Wifi,
-  WifiOff,
-  DollarSign,
-  Users,
-  ShieldCheck,
-  AlertTriangle,
-  Package,
-  Star,
-  RefreshCw,
-  Database,
+  Wifi, WifiOff, DollarSign, Users, ShieldCheck,
+  AlertTriangle, Package, Star, RefreshCw, Database,
+  ServerOff, CheckCircle,
 } from 'lucide-react';
 import type { SteamAccount } from '../types';
 import { useAppStore } from '../store';
@@ -19,18 +12,20 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ accounts }: DashboardProps) {
-  const { messages, friendRequestLogs, refreshStatuses } = useAppStore();
+  const { messages, friendRequestLogs, refreshStatuses, serverConnected, steamAvailable, checkServerConnection } = useAppStore();
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
+    checkServerConnection();
     const interval = setInterval(() => {
       refreshStatuses();
     }, 30000);
     return () => clearInterval(interval);
-  }, [refreshStatuses]);
+  }, [refreshStatuses, checkServerConnection]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    await checkServerConnection();
     await refreshStatuses();
     setRefreshing(false);
   };
@@ -57,12 +52,8 @@ export default function Dashboard({ accounts }: DashboardProps) {
   const outgoingMessages = messages.filter(m => m.isOutgoing).length;
 
   const totalFriendRequests = friendRequestLogs.filter(l => l.accountId !== 'system').length;
-  const sentRequests = friendRequestLogs.filter(
-    l => l.status === 'sent' && l.accountId !== 'system'
-  ).length;
-  const errorRequests = friendRequestLogs.filter(
-    l => l.status === 'error' && l.accountId !== 'system'
-  ).length;
+  const sentRequests = friendRequestLogs.filter(l => l.status === 'sent' && l.accountId !== 'system').length;
+  const errorRequests = friendRequestLogs.filter(l => l.status === 'error' && l.accountId !== 'system').length;
 
   return (
     <div className="p-6 space-y-6 animate-fade-in overflow-y-auto max-h-[calc(100vh-52px)]">
@@ -85,6 +76,52 @@ export default function Dashboard({ accounts }: DashboardProps) {
           Обновить
         </button>
       </div>
+
+      {/* Server Status Banner */}
+      {!serverConnected && (
+        <div className="flex items-start gap-3 p-4 rounded-2xl bg-red-500/10 border border-red-500/20">
+          <ServerOff size={20} className="text-red-400 mt-0.5 shrink-0" />
+          <div>
+            <div className="text-sm font-medium text-red-400">⛔ Сервер не подключен</div>
+            <div className="text-xs text-red-300/60 mt-1 space-y-1">
+              <p>Бэкенд сервер (server.js) не запущен или недоступен.</p>
+              <p className="mt-2 text-yellow-400/80">
+                ⚡ Запустите:
+              </p>
+              <code className="block bg-white/5 px-3 py-2 rounded-lg text-white/60 mt-1">
+                npm install steam-user steam-totp{'\n'}
+                node server.js
+              </code>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {serverConnected && !steamAvailable && (
+        <div className="flex items-start gap-3 p-4 rounded-2xl bg-yellow-500/10 border border-yellow-500/20">
+          <AlertTriangle size={20} className="text-yellow-400 mt-0.5 shrink-0" />
+          <div>
+            <div className="text-sm font-medium text-yellow-400">⚠️ Сервер запущен, но steam-user НЕ установлен</div>
+            <div className="text-xs text-yellow-300/60 mt-1 space-y-1">
+              <p>Без steam-user аккаунты <strong className="text-yellow-400">НЕ</strong> подключаются к Steam реально.</p>
+              <p>Статусы будут фейковые — в Steam аккаунт будет оффлайн.</p>
+              <code className="block bg-white/5 px-3 py-2 rounded-lg text-white/60 mt-2">
+                npm install steam-user steam-totp{'\n'}
+                # Перезапустите server.js
+              </code>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {serverConnected && steamAvailable && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-green-500/10 border border-green-500/20">
+          <CheckCircle size={16} className="text-green-400" />
+          <div className="text-xs text-green-400/80">
+            ✅ Сервер подключен + steam-user установлен — аккаунты входят в Steam <strong>реально</strong>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="glass-card rounded-2xl p-4 bg-gradient-to-br from-green-500/10 to-green-600/5">
@@ -172,13 +209,13 @@ export default function Dashboard({ accounts }: DashboardProps) {
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-white/50">Исходящих</span>
-              <span className="text-green-400">{outgoingMessages}</span>
+              <span className="text-purple-400">{outgoingMessages}</span>
             </div>
           </div>
         </div>
 
         <div className="glass-card rounded-2xl p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-white">👤 Запросы в друзья</h3>
+          <h3 className="text-sm font-semibold text-white">👥 Запросы в друзья</h3>
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
               <span className="text-white/50">Всего запросов</span>
@@ -189,65 +226,31 @@ export default function Dashboard({ accounts }: DashboardProps) {
               <span className="text-green-400">{sentRequests}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-white/50">Ошибок</span>
+              <span className="text-white/50">Ошибки</span>
               <span className="text-red-400">{errorRequests}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Accounts list */}
-      <div className="glass-card rounded-2xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white">Все аккаунты ({accounts.length})</h3>
-        </div>
-        <div className="divide-y divide-white/5 max-h-80 overflow-y-auto">
-          {accounts.length === 0 ? (
-            <div className="p-8 text-center text-xs text-white/30">Нет аккаунтов</div>
-          ) : (
-            accounts.map(acc => (
-              <div key={acc.id} className="px-4 py-3 flex items-center gap-3">
-                {acc.avatarUrl ? (
-                  <img src={acc.avatarUrl} alt="" className="w-7 h-7 rounded-full" />
-                ) : (
-                  <span className="text-lg">{acc.avatar}</span>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-white truncate">{acc.displayName}</div>
-                  <div className="text-[10px] text-white/30">
-                    {acc.login} • Lvl {acc.level} • ${acc.balance.toFixed(2)}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full ${
-                      acc.status === 'online'
-                        ? 'bg-green-500/20 text-green-400'
-                        : acc.status === 'in-game'
-                        ? 'bg-blue-500/20 text-blue-400'
-                        : acc.status === 'connecting'
-                        ? 'bg-yellow-500/20 text-yellow-400'
-                        : acc.status === 'error'
-                        ? 'bg-red-500/20 text-red-400'
-                        : 'bg-white/5 text-white/30'
-                    }`}
-                  >
-                    {acc.status === 'online'
-                      ? 'Онлайн'
-                      : acc.status === 'in-game'
-                      ? 'В игре'
-                      : acc.status === 'connecting'
-                      ? 'Подкл...'
-                      : acc.status === 'error'
-                      ? 'Ошибка'
-                      : 'Офлайн'}
-                  </span>
-                </div>
+      {/* Error accounts */}
+      {errorCount > 0 && (
+        <div className="glass-card rounded-2xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-red-400 flex items-center gap-2">
+            <AlertTriangle size={14} />
+            Аккаунты с ошибками
+          </h3>
+          <div className="space-y-2">
+            {accounts.filter(a => a.status === 'error').map(acc => (
+              <div key={acc.id} className="flex items-center gap-3 p-2 rounded-xl bg-red-500/5">
+                <span className="w-2 h-2 rounded-full bg-red-400" />
+                <span className="text-xs text-white/60">{acc.login}</span>
+                <span className="text-[10px] text-red-400/80 ml-auto">{acc.errorMessage || 'Неизвестная ошибка'}</span>
               </div>
-            ))
-          )}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
