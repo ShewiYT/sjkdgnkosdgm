@@ -48,7 +48,6 @@ export default function SettingsView() {
       </div>
 
       <div className="space-y-4 max-w-2xl">
-        {/* Export */}
         <div className="glass-card rounded-2xl p-4 space-y-3">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             <Database size={16} />
@@ -73,7 +72,6 @@ export default function SettingsView() {
           </div>
         </div>
 
-        {/* Danger zone */}
         <div className="glass-card rounded-2xl p-4 space-y-3 border border-red-500/10">
           <h3 className="text-sm font-semibold text-red-400">Опасная зона</h3>
           <button
@@ -89,9 +87,8 @@ export default function SettingsView() {
           </button>
         </div>
 
-        {/* About */}
         <div className="glass-card rounded-2xl p-4">
-          <div className="text-sm text-white font-medium mb-1">SukaCombine v2.0</div>
+          <div className="text-sm text-white font-medium mb-1">SukaCombine v3.0</div>
           <div className="text-xs text-white/30">Steam Panel • Suka Team</div>
           <div className="text-[10px] text-white/20 mt-2">
             Аккаунтов: {accounts.length} •

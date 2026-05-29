@@ -7,6 +7,7 @@ import BrowserView from './components/BrowserView';
 import Offers from './components/Offers';
 import Spammer from './components/Spammer';
 import FriendsManager from './components/FriendsManager';
+import AccountManager from './components/AccountManager';
 import SDAGuard from './components/SDAGuard';
 import SecurityView from './components/SecurityView';
 import Workers from './components/Workers';
@@ -15,24 +16,32 @@ import ImportAccounts from './components/ImportAccounts';
 import LoginPage from './components/LoginPage';
 import DomainsView from './components/DomainsView';
 import NotificationsView from './components/NotificationsView';
-import SteamIdParser from './components/SteamIdParser';
+import SteamParser from './components/SteamParser';
 import { useAppStore } from './store';
 import type { ActiveView, SteamAccount } from './types';
 
 export default function App() {
-  const { currentUser, logout, getVisibleAccounts, tradeOffers, connectAll, disconnectAll, refreshStatuses } = useAppStore();
+  const {
+    currentUser, logout, getVisibleAccounts, tradeOffers,
+    connectAll, disconnectAll, refreshStatuses, loadAccountsFromServer
+  } = useAppStore();
+
   const [activeView, setActiveView] = useState<ActiveView>('import');
   const [selectedAccount, setSelectedAccount] = useState<SteamAccount | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const accounts = getVisibleAccounts();
 
+  // Load accounts from server and refresh statuses on mount
   useEffect(() => {
     if (!currentUser) return;
+    
+    loadAccountsFromServer();
     refreshStatuses();
+    
     const interval = setInterval(refreshStatuses, 10000);
     return () => clearInterval(interval);
-  }, [currentUser, refreshStatuses]);
+  }, [currentUser, refreshStatuses, loadAccountsFromServer]);
 
   if (!currentUser) {
     return <LoginPage />;
@@ -54,9 +63,9 @@ export default function App() {
       case 'import':
         return <ImportAccounts />;
       case 'dashboard':
-        return <Dashboard />;
+        return <Dashboard accounts={accounts} />;
       case 'multichat':
-        return <MultiChat accounts={accounts} />;
+        return <MultiChat selectedAccount={selectedAccount} />;
       case 'browser':
         return <BrowserView accounts={accounts} selectedAccount={selectedAccount} />;
       case 'offers':
@@ -64,9 +73,11 @@ export default function App() {
       case 'spammer':
         return <Spammer accounts={accounts} />;
       case 'friends':
-        return <FriendsManager accounts={accounts} />;
+        return <FriendsManager accounts={accounts} selectedAccount={selectedAccount} />;
       case 'parser':
-        return <SteamIdParser />;
+        return <SteamParser />;
+      case 'account-manager':
+        return <AccountManager accounts={accounts} />;
       case 'sda':
         return <SDAGuard accounts={accounts} />;
       case 'guard':
@@ -74,13 +85,13 @@ export default function App() {
       case 'notifications':
         return <NotificationsView />;
       case 'domains':
-        return isAdmin ? <DomainsView /> : <div className="flex items-center justify-center h-full text-white/30">Нет доступа</div>;
+        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/50">Нет доступа</div>;
       case 'workers':
-        return isAdmin ? <Workers accounts={accounts} /> : <div className="flex items-center justify-center h-full text-white/30">Нет доступа</div>;
+        return isAdmin ? <Workers accounts={accounts} /> : <div className="p-6 text-white/50">Нет доступа</div>;
       case 'settings':
         return <SettingsView />;
       default:
-        return <Dashboard />;
+        return <Dashboard accounts={accounts} />;
     }
   };
 

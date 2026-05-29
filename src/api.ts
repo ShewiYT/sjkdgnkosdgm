@@ -1,3 +1,5 @@
+import type { ParserConfig, ParserJob } from './types';
+
 const API_BASE = '/api/steam';
 
 export interface LoginResponse {
@@ -153,43 +155,142 @@ export const steamApi = {
     }
   },
 
-  // Chain parser API
-  async startChainParse(params: {
-    seedIds: string[];
-    apiKey: string;
-    minValue: number;
-    maxValue: number;
-    maxDepth: number;
-    targetCount: number;
-    appId: number;
-  }): Promise<any> {
+  async addFriend(accountId: string, targetSteamId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const res = await fetch('/api/parser/chain/start', {
+      const res = await fetch(`${API_BASE}/add-friend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
+        body: JSON.stringify({ accountId, targetSteamId }),
       });
       return await res.json();
     } catch {
-      return { error: 'Network error' };
+      return { success: false, error: 'Network error' };
     }
   },
 
-  async getChainParseStatus(jobId: string): Promise<any> {
+  async getFriendsOfFriend(accountId: string, friendSteamId: string): Promise<FriendData[]> {
     try {
-      const res = await fetch(`/api/parser/chain/status/${jobId}`);
-      return await res.json();
+      const res = await fetch(`${API_BASE}/friends-of-friend/${accountId}/${friendSteamId}`);
+      const data = await res.json();
+      return data.friends || [];
     } catch {
-      return { error: 'Network error' };
+      return [];
     }
   },
 
-  async cancelChainParse(jobId: string): Promise<any> {
+  async updateProfile(accountId: string, data: { name?: string; country?: string; bio?: string; avatarUrl?: string }): Promise<{ success: boolean; error?: string }> {
     try {
-      const res = await fetch(`/api/parser/chain/cancel/${jobId}`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/update-profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, ...data }),
+      });
       return await res.json();
     } catch {
-      return { error: 'Network error' };
+      return { success: false, error: 'Network error' };
+    }
+  },
+
+  async spamFriends(accountId: string, message: string): Promise<{ success: boolean; sent: number; errors: number; logs: any[] }> {
+    try {
+      const res = await fetch(`${API_BASE}/spam-friends`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, message }),
+      });
+      return await res.json();
+    } catch {
+      return { success: false, sent: 0, errors: 0, logs: [] };
+    }
+  },
+};
+
+// Parser API - works on server, doesn't stop when tab closes
+export const parserApi = {
+  async startParser(config: ParserConfig): Promise<{ success: boolean; jobId?: string; error?: string }> {
+    try {
+      const res = await fetch('/api/parser/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      return await res.json();
+    } catch {
+      return { success: false, error: 'Network error' };
+    }
+  },
+
+  async stopParser(jobId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch(`/api/parser/stop/${jobId}`, { method: 'POST' });
+      return await res.json();
+    } catch {
+      return { success: false, error: 'Network error' };
+    }
+  },
+
+  async pauseParser(jobId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch(`/api/parser/pause/${jobId}`, { method: 'POST' });
+      return await res.json();
+    } catch {
+      return { success: false, error: 'Network error' };
+    }
+  },
+
+  async resumeParser(jobId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch(`/api/parser/resume/${jobId}`, { method: 'POST' });
+      return await res.json();
+    } catch {
+      return { success: false, error: 'Network error' };
+    }
+  },
+
+  async getParserStatus(jobId: string): Promise<ParserJob | null> {
+    try {
+      const res = await fetch(`/api/parser/status/${jobId}`);
+      const data = await res.json();
+      return data.job || null;
+    } catch {
+      return null;
+    }
+  },
+
+  async getActiveJobs(): Promise<ParserJob[]> {
+    try {
+      const res = await fetch('/api/parser/jobs');
+      const data = await res.json();
+      return data.jobs || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async getParserResults(jobId: string): Promise<{ results: any[]; total: number }> {
+    try {
+      const res = await fetch(`/api/parser/results/${jobId}`);
+      return await res.json();
+    } catch {
+      return { results: [], total: 0 };
+    }
+  },
+
+  async exportResults(jobId: string, format: 'txt' | 'json' | 'csv'): Promise<Blob | null> {
+    try {
+      const res = await fetch(`/api/parser/export/${jobId}?format=${format}`);
+      return await res.blob();
+    } catch {
+      return null;
+    }
+  },
+
+  async clearResults(jobId: string): Promise<{ success: boolean }> {
+    try {
+      const res = await fetch(`/api/parser/clear/${jobId}`, { method: 'DELETE' });
+      return await res.json();
+    } catch {
+      return { success: false };
     }
   },
 };

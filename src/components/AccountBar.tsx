@@ -13,7 +13,7 @@ export default function AccountBar({ accounts, selectedAccount, onSelectAccount,
   const allOnline = onlineCount === accounts.length && accounts.length > 0;
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2 bg-dark-800/50 border-b border-white/5 overflow-x-auto">
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-white/5 bg-dark-800/50 overflow-x-auto">
       <button
         onClick={() => onSelectAccount(null)}
         className={`shrink-0 px-3 py-1.5 rounded-lg text-xs transition-colors ${
@@ -28,33 +28,33 @@ export default function AccountBar({ accounts, selectedAccount, onSelectAccount,
           key={acc.id}
           onClick={() => onSelectAccount(acc)}
           className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-            selectedAccount?.id === acc.id
-              ? 'bg-white/10 text-white'
-              : 'text-white/40 hover:text-white/60'
+            selectedAccount?.id === acc.id ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
           }`}
         >
           <span className={`w-1.5 h-1.5 rounded-full ${
             acc.status === 'online' ? 'bg-green-400' :
             acc.status === 'in-game' ? 'bg-blue-400' :
-            acc.status === 'connecting' ? 'bg-yellow-400 animate-pulse-dot' :
+            acc.status === 'connecting' ? 'bg-yellow-400 animate-pulse' :
             acc.status === 'error' ? 'bg-red-400' :
-            'bg-white/20'
+            'bg-gray-500'
           }`} />
           {acc.login}
         </button>
       ))}
 
-      <div className="ml-auto shrink-0 flex items-center gap-2">
-        <span className="text-xs text-white/30">{onlineCount}/{accounts.length} онлайн</span>
+      <div className="ml-auto flex items-center gap-2 shrink-0">
+        <span className="text-[10px] text-white/30">
+          {onlineCount}/{accounts.length} онлайн
+        </span>
         <button
           onClick={onConnectAll}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
             allOnline
-              ? 'text-red-400/70 hover:text-red-400 hover:bg-red-500/10'
-              : 'text-green-400/70 hover:text-green-400 hover:bg-green-500/10'
+              ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
+              : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
           }`}
         >
-          {allOnline ? <PowerOff className="w-3 h-3" /> : <Power className="w-3 h-3" />}
+          {allOnline ? <PowerOff size={12} /> : <Power size={12} />}
           {allOnline ? 'Откл. все' : 'Подкл. все'}
         </button>
       </div>

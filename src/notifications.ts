@@ -48,15 +48,27 @@ export async function sendNotification(settings: NotificationSettings, message: 
 }
 
 export const NotificationTemplates = {
-  accountsLoaded: (count: number) => `🔄 <b>Загружены аккаунты</b>\nКоличество: <b>${count}</b> шт.`,
-  newMessage: (senderName: string, steamId: string, preview: string) => `💬 <b>Новое сообщение</b>\nОт: <b>${senderName}</b> (${steamId})\nСообщение: ${preview.substring(0, 100)}`,
-  accountLogin: (login: string, status: string) => `🔑 <b>Вход в аккаунт</b>\nЛогин: <b>${login}</b>\nСтатус: ${status === 'online' ? '✅ Успешно' : '❌ Ошибка'}`,
-  accountError: (login: string, error: string) => `⚠️ <b>Ошибка аккаунта</b>\nЛогин: <b>${login}</b>\nОшибка: ${error}`,
+  accountsLoaded: (count: number) =>
+    `🔄 <b>Загружены аккаунты</b>\nКоличество: <b>${count}</b> шт.`,
+  newMessage: (senderName: string, steamId: string, preview: string) =>
+    `💬 <b>Новое сообщение</b>\nОт: <b>${senderName}</b> (${steamId})\nСообщение: ${preview.substring(0, 100)}`,
+  accountLogin: (login: string, status: string) =>
+    `🔑 <b>Вход в аккаунт</b>\nЛогин: <b>${login}</b>\nСтатус: ${status === 'online' ? '✅ Успешно' : '❌ Ошибка'}`,
+  accountError: (login: string, error: string) =>
+    `⚠️ <b>Ошибка аккаунта</b>\nЛогин: <b>${login}</b>\nОшибка: ${error}`,
+  friendRequestSent: (login: string, target: string) =>
+    `👤 <b>Запрос в друзья</b>\nОт: <b>${login}</b>\nКому: ${target}`,
 };
 
 export const DiscordTemplates = {
-  accountsLoaded: (count: number) => `🔄 **Загружены аккаунты**\nКоличество: **${count}** шт.`,
-  newMessage: (senderName: string, steamId: string, preview: string) => `💬 **Новое сообщение**\nОт: **${senderName}** (${steamId})\nСообщение: ${preview.substring(0, 100)}`,
-  accountLogin: (login: string, status: string) => `🔑 **Вход в аккаунт**\nЛогин: **${login}**\nСтатус: ${status === 'online' ? '✅ Успешно' : '❌ Ошибка'}`,
-  accountError: (login: string, error: string) => `⚠️ **Ошибка аккаунта**\nЛогин: **${login}**\nОшибка: ${error}`,
+  accountsLoaded: (count: number) =>
+    `🔄 **Загружены аккаунты**\nКоличество: **${count}** шт.`,
+  newMessage: (senderName: string, steamId: string, preview: string) =>
+    `💬 **Новое сообщение**\nОт: **${senderName}** (${steamId})\nСообщение: ${preview.substring(0, 100)}`,
+  accountLogin: (login: string, status: string) =>
+    `🔑 **Вход в аккаунт**\nЛогин: **${login}**\nСтатус: ${status === 'online' ? '✅ Успешно' : '❌ Ошибка'}`,
+  accountError: (login: string, error: string) =>
+    `⚠️ **Ошибка аккаунта**\nЛогин: **${login}**\nОшибка: ${error}`,
+  friendRequestSent: (login: string, target: string) =>
+    `👤 **Запрос в друзья**\nОт: **${login}**\nКому: ${target}`,
 };

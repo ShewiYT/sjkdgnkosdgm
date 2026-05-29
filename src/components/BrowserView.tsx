@@ -25,7 +25,6 @@ export default function BrowserView({ accounts, selectedAccount }: BrowserViewPr
   const openBrowser = async () => {
     if (!account) return;
     setLoading(true);
-    // Here would be API call to open browser
     setIsOpen(true);
     setLoading(false);
   };
@@ -33,7 +32,6 @@ export default function BrowserView({ accounts, selectedAccount }: BrowserViewPr
   const navigate = async (newUrl: string) => {
     setUrl(newUrl);
     setLoading(true);
-    // API call to navigate
     setTimeout(() => setLoading(false), 500);
   };
 
@@ -47,7 +45,6 @@ export default function BrowserView({ accounts, selectedAccount }: BrowserViewPr
         <p className="text-white/40 text-sm">Встроенный браузер с авторизацией Steam</p>
       </div>
 
-      {/* Browser controls */}
       <div className="flex items-center gap-2">
         <button className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white/60">
           <ArrowLeft className="w-4 h-4" />
@@ -95,7 +92,6 @@ export default function BrowserView({ accounts, selectedAccount }: BrowserViewPr
         )}
       </div>
 
-      {/* Quick links */}
       <div className="flex flex-wrap gap-2">
         {quickLinks.map(link => (
           <button
@@ -108,7 +104,6 @@ export default function BrowserView({ accounts, selectedAccount }: BrowserViewPr
         ))}
       </div>
 
-      {/* Browser area */}
       <div className="flex-1 glass-card rounded-xl overflow-hidden flex items-center justify-center">
         {!account ? (
           <div className="text-center text-white/30">

@@ -27,7 +27,7 @@ export default function LoginPage() {
             ST
           </div>
           <h1 className="text-xl font-bold">SukaCombine</h1>
-          <p className="text-white/40 text-sm">Steam Panel v2.0</p>
+          <p className="text-white/40 text-sm">Steam Panel v3.0</p>
         </div>
 
         {error && (

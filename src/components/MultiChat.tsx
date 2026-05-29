@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageSquare, Send, Search, Languages, BookMarked, Plus, Package } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { MessageSquare, Send, Search, Languages, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../store';
+import { steamApi, type FriendData } from '../api';
 import type { SteamAccount } from '../types';
 
 interface MultiChatProps {
-  accounts: SteamAccount[];
+  selectedAccount: SteamAccount | null;
 }
 
 interface Conversation {
@@ -18,184 +19,272 @@ interface Conversation {
   lastTimestamp: string;
   unread: number;
   inventoryValue?: number;
+  personaState?: number;
 }
 
-async function translateText(text: string, sourceLang: string, targetLang: string): Promise<string> {
-  if (!text.trim()) return text;
+// Translation function using Google Translate
+async function translateText(text: string, from: string, to: string): Promise<string> {
   try {
-    const googleRes = await fetch(
-      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`
-    );
-    if (googleRes.ok) {
-      const data = await googleRes.json();
-      if (data?.[0]?.[0]?.[0]) {
-        return data[0].map((part: any) => part[0]).join('');
-      }
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data && data[0]) {
+      return data[0].map((item: any) => item[0]).join('');
     }
-  } catch { /* ignore */ }
-  return text;
+    return text;
+  } catch {
+    return text;
+  }
 }
 
-export default function MultiChat(_props: MultiChatProps) {
-  const { messages, sendMessage } = useAppStore();
-  const [searchQuery, setSearchQuery] = useState('');
+export default function MultiChat({ selectedAccount }: MultiChatProps) {
+  const { messages, sendMessage, fetchNewMessages, getVisibleAccounts } = useAppStore();
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [inputText, setInputText] = useState('');
-  const [translateOutgoing, setTranslateOutgoing] = useState(false);
-  const [translateIncoming, setTranslateIncoming] = useState(false);
-  const [targetLang, setTargetLang] = useState<'en' | 'ru'>('en');
-  const [templates, setTemplates] = useState(['Привет!', 'Кинь оффер', 'Цена?', 'Добавь в друзья']);
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [newTemplate, setNewTemplate] = useState('');
-  const [translatedMessages, setTranslatedMessages] = useState<Record<string, string>>({});
-  const [translating, setTranslating] = useState(false);
-  const [inventoryCache, setInventoryCache] = useState<Record<string, number>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [allFriends, setAllFriends] = useState<Map<string, FriendData[]>>(new Map());
+  const [loadingFriends, setLoadingFriends] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Polling is handled at app level
+  // Translation state
+  const [translateIncoming, setTranslateIncoming] = useState(false);
+  const [translateOutgoing, setTranslateOutgoing] = useState(false);
+  const [targetLang, setTargetLang] = useState<'en' | 'ru'>('en');
+  const [translatedMessages, setTranslatedMessages] = useState<Record<string, string>>({});
+  const [translating, setTranslating] = useState(false);
 
+  const accounts = getVisibleAccounts();
+  const onlineAccounts = accounts.filter(a => a.status === 'online' || a.status === 'in-game');
+
+  // Load friends for all online accounts
+  const loadAllFriends = async () => {
+    setLoadingFriends(true);
+    const friendsMap = new Map<string, FriendData[]>();
+    
+    for (const acc of onlineAccounts) {
+      try {
+        const friends = await steamApi.getFriends(acc.id);
+        friendsMap.set(acc.id, friends);
+      } catch {
+        friendsMap.set(acc.id, []);
+      }
+    }
+    
+    setAllFriends(friendsMap);
+    setLoadingFriends(false);
+  };
+
+  // Load friends on mount and when accounts change
+  useEffect(() => {
+    if (onlineAccounts.length > 0) {
+      loadAllFriends();
+    }
+  }, [onlineAccounts.length]);
+
+  // Poll for new messages every 3 seconds
+  useEffect(() => {
+    fetchNewMessages();
+    const interval = setInterval(fetchNewMessages, 3000);
+    return () => clearInterval(interval);
+  }, [fetchNewMessages]);
+
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, selectedConversation]);
 
-  // Build conversations from messages
-  const conversations: Conversation[] = [];
-  const convMap = new Map<string, Conversation>();
-
-  messages.forEach(msg => {
-    const key = `${msg.accountId}_${msg.friendId}`;
-    if (!convMap.has(key)) {
-      convMap.set(key, {
-        friendId: msg.friendId,
-        friendName: msg.friendName,
-        friendAvatar: msg.friendAvatar,
-        friendAvatarUrl: msg.friendAvatarUrl,
-        accountId: msg.accountId,
-        accountLogin: msg.accountLogin,
-        lastMessage: msg.text,
-        lastTimestamp: msg.timestamp,
-        unread: msg.isOutgoing ? 0 : 1,
-        inventoryValue: inventoryCache[msg.friendId],
-      });
-    } else {
-      const conv = convMap.get(key)!;
-      if (msg.timestamp > conv.lastTimestamp) {
-        conv.lastMessage = msg.text;
-        conv.lastTimestamp = msg.timestamp;
-      }
-      if (msg.friendAvatarUrl) conv.friendAvatarUrl = msg.friendAvatarUrl;
-      if (!msg.isOutgoing) conv.unread++;
-      if (inventoryCache[msg.friendId]) conv.inventoryValue = inventoryCache[msg.friendId];
-    }
-  });
-
-  convMap.forEach(c => conversations.push(c));
-  
-  // СОРТИРОВКА: сначала непрочитанные (unread > 0), потом по времени
-  conversations.sort((a, b) => {
-    // Непрочитанные всегда наверху
-    if (a.unread > 0 && b.unread === 0) return -1;
-    if (a.unread === 0 && b.unread > 0) return 1;
-    // Внутри группы - по времени (новые выше)
-    return b.lastTimestamp.localeCompare(a.lastTimestamp);
-  });
-
-  // Load inventory values
-  useEffect(() => {
-    const friendIds = [...new Set(conversations.map(c => c.friendId))];
-    friendIds.forEach(friendId => {
-      if (inventoryCache[friendId] === undefined) {
-        fetch(`/api/inventory/${friendId}`)
-          .then(r => r.json())
-          .then(data => {
-            if (data.totalValue !== undefined) {
-              setInventoryCache(prev => ({ ...prev, [friendId]: data.totalValue }));
-            }
-          })
-          .catch(() => {});
-      }
-    });
-  }, [conversations.length]);
-
-  const filteredConversations = searchQuery
-    ? conversations.filter(c =>
-        c.friendName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.accountLogin.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : conversations;
-
-  const conversationMessages = selectedConversation
-    ? messages.filter(
-        m => m.accountId === selectedConversation.accountId && m.friendId === selectedConversation.friendId
-      )
-    : [];
-
   // Translate incoming messages
-  const translateIncomingMessages = useCallback(async () => {
+  useEffect(() => {
     if (!translateIncoming || !selectedConversation) return;
-    setTranslating(true);
-    const incoming = conversationMessages.filter(m => !m.isOutgoing && !translatedMessages[m.id]);
-    for (const msg of incoming) {
-      const translated = await translateText(msg.text, 'auto', 'ru');
-      if (translated !== msg.text) {
+    
+    const incomingMsgs = messages.filter(
+      m => m.accountId === selectedConversation.accountId && 
+           m.friendId === selectedConversation.friendId && 
+           !m.isOutgoing &&
+           !translatedMessages[m.id]
+    );
+
+    if (incomingMsgs.length === 0) return;
+
+    const translateAll = async () => {
+      for (const msg of incomingMsgs) {
+        const translated = await translateText(msg.text, 'auto', 'ru');
         setTranslatedMessages(prev => ({ ...prev, [msg.id]: translated }));
       }
-    }
-    setTranslating(false);
-  }, [translateIncoming, selectedConversation, conversationMessages, translatedMessages]);
+    };
+    translateAll();
+  }, [messages, translateIncoming, selectedConversation]);
 
-  useEffect(() => {
-    if (translateIncoming) translateIncomingMessages();
-  }, [translateIncoming, conversationMessages.length]);
+  // Build conversations from friends + messages
+  const conversations = useMemo(() => {
+    const convMap = new Map<string, Conversation>();
+    
+    const relevantAccounts = selectedAccount 
+      ? [selectedAccount].filter(a => a.status === 'online' || a.status === 'in-game')
+      : onlineAccounts;
+
+    for (const acc of relevantAccounts) {
+      const friends = allFriends.get(acc.id) || [];
+      for (const friend of friends) {
+        const key = `${acc.id}_${friend.steamId}`;
+        convMap.set(key, {
+          friendId: friend.steamId,
+          friendName: friend.name || friend.steamId,
+          friendAvatar: '👤',
+          friendAvatarUrl: friend.avatarUrl,
+          accountId: acc.id,
+          accountLogin: acc.login,
+          lastMessage: '',
+          lastTimestamp: '',
+          unread: 0,
+          inventoryValue: friend.inventoryValue,
+          personaState: friend.personaState,
+        });
+      }
+    }
+
+    const relevantMessages = selectedAccount 
+      ? messages.filter(m => m.accountId === selectedAccount.id)
+      : messages;
+
+    for (const msg of relevantMessages) {
+      const key = `${msg.accountId}_${msg.friendId}`;
+      const existing = convMap.get(key);
+      
+      if (existing) {
+        if (!existing.lastTimestamp || new Date(msg.timestamp) > new Date(existing.lastTimestamp)) {
+          existing.lastMessage = msg.text;
+          existing.lastTimestamp = msg.timestamp;
+        }
+        if (!msg.isOutgoing) {
+          existing.unread = (existing.unread || 0) + 1;
+        }
+        existing.friendAvatarUrl = msg.friendAvatarUrl || existing.friendAvatarUrl;
+      } else {
+        convMap.set(key, {
+          friendId: msg.friendId,
+          friendName: msg.friendName,
+          friendAvatar: '👤',
+          friendAvatarUrl: msg.friendAvatarUrl,
+          accountId: msg.accountId,
+          accountLogin: msg.accountLogin,
+          lastMessage: msg.text,
+          lastTimestamp: msg.timestamp,
+          unread: msg.isOutgoing ? 0 : 1,
+        });
+      }
+    }
+
+    return Array.from(convMap.values()).sort((a, b) => {
+      if (a.lastTimestamp && !b.lastTimestamp) return -1;
+      if (!a.lastTimestamp && b.lastTimestamp) return 1;
+      if (a.lastTimestamp && b.lastTimestamp) {
+        return new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime();
+      }
+      const aOnline = (a.personaState || 0) > 0;
+      const bOnline = (b.personaState || 0) > 0;
+      if (aOnline && !bOnline) return -1;
+      if (!aOnline && bOnline) return 1;
+      return a.friendName.localeCompare(b.friendName);
+    });
+  }, [messages, selectedAccount, onlineAccounts, allFriends]);
+
+  const filteredConversations = conversations.filter(c =>
+    !searchQuery || 
+    c.friendName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.accountLogin.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.friendId.includes(searchQuery)
+  );
+
+  const conversationMessages = useMemo(() => {
+    if (!selectedConversation) return [];
+    return messages.filter(
+      m => m.accountId === selectedConversation.accountId && m.friendId === selectedConversation.friendId
+    ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }, [messages, selectedConversation]);
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || !selectedConversation) return;
     let textToSend = inputText.trim();
-    if (translateOutgoing) {
+    
+    if (translateOutgoing && textToSend) {
+      setTranslating(true);
       textToSend = await translateText(textToSend, 'ru', targetLang);
+      setTranslating(false);
     }
+    
+    setInputText('');
     await sendMessage(
       selectedConversation.accountId,
       selectedConversation.friendId,
       selectedConversation.friendName,
       textToSend
     );
-    setInputText('');
-  };
-
-  const addTemplate = () => {
-    if (newTemplate.trim() && !templates.includes(newTemplate.trim())) {
-      setTemplates([...templates, newTemplate.trim()]);
-      setNewTemplate('');
-    }
   };
 
   const formatTime = (ts: string) => {
-    const d = new Date(ts);
-    return d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+    if (!ts) return '';
+    try {
+      const d = new Date(ts);
+      const now = new Date();
+      const isToday = d.toDateString() === now.toDateString();
+      if (isToday) return d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleDateString('ru', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '';
+    }
   };
 
-  const renderAvatar = (url?: string, fallback?: string, className = 'w-8 h-8') => {
-    if (url) {
-      return <img src={url} alt="" className={`${className} rounded-full`} />;
+  // Fixed avatar render - check if URL is valid image URL
+  const renderAvatar = (avatarUrl?: string, emoji?: string, size = 'w-10 h-10') => {
+    // Check if avatarUrl is a valid URL and looks like an image
+    if (avatarUrl && (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) && 
+        (avatarUrl.includes('steamcdn') || avatarUrl.includes('akamai') || avatarUrl.includes('.jpg') || 
+         avatarUrl.includes('.png') || avatarUrl.includes('.gif') || avatarUrl.includes('avatar'))) {
+      return (
+        <img 
+          src={avatarUrl} 
+          alt="" 
+          className={`${size} rounded-full object-cover bg-white/10`}
+          onError={(e) => {
+            // If image fails to load, replace with emoji
+            const target = e.target as HTMLImageElement;
+            target.style.display = 'none';
+            target.parentElement?.classList.add('avatar-fallback');
+          }}
+        />
+      );
     }
-    return <span className={`${className} flex items-center justify-center bg-white/10 rounded-full text-sm`}>{fallback || '👤'}</span>;
+    return (
+      <span className={`${size} rounded-full bg-white/10 flex items-center justify-center text-sm shrink-0`}>
+        {emoji || '👤'}
+      </span>
+    );
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-[calc(100vh-52px)]">
       {/* Conversations list */}
-      <div className="w-80 border-r border-white/5 flex flex-col">
-        <div className="p-4 border-b border-white/5">
-          <div className="flex items-center gap-2 mb-3">
-            <MessageSquare className="w-5 h-5 text-indigo-400" />
-            <span className="font-semibold">Мультичат</span>
+      <div className="w-80 border-r border-white/5 flex flex-col bg-dark-800/30">
+        <div className="p-3 border-b border-white/5 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={16} className="text-indigo-400" />
+              <span className="text-sm font-semibold">Мультичат</span>
+            </div>
+            <button 
+              onClick={loadAllFriends}
+              disabled={loadingFriends}
+              className="p-1 rounded hover:bg-white/10 text-white/40 hover:text-white/70"
+              title="Обновить список друзей"
+            >
+              <RefreshCw size={14} className={loadingFriends ? 'animate-spin' : ''} />
+            </button>
           </div>
-          <div className="text-xs text-white/30 mb-3">{conversations.length} диалогов</div>
+          <div className="text-[10px] text-white/30">{conversations.length} диалогов</div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-white/30" />
             <input
-              type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Поиск..."
@@ -205,9 +294,14 @@ export default function MultiChat(_props: MultiChatProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {filteredConversations.length === 0 ? (
+          {loadingFriends ? (
             <div className="p-4 text-center text-xs text-white/30">
-              {conversations.length === 0 ? 'Нет диалогов' : 'Ничего не найдено'}
+              <div className="w-5 h-5 border-2 border-white/10 border-t-indigo-400 rounded-full animate-spin mx-auto mb-2" />
+              Загрузка друзей...
+            </div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="p-4 text-center text-xs text-white/30">
+              {conversations.length === 0 ? 'Нет друзей онлайн' : 'Ничего не найдено'}
             </div>
           ) : (
             filteredConversations.map(conv => (
@@ -220,25 +314,30 @@ export default function MultiChat(_props: MultiChatProps) {
                     : ''
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <div className="relative">
+                <div className="flex items-start gap-2">
+                  <div className="relative shrink-0">
                     {renderAvatar(conv.friendAvatarUrl, conv.friendAvatar, 'w-10 h-10')}
+                    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-dark-800 ${
+                      (conv.personaState || 0) > 0 ? 'bg-green-400' : 'bg-gray-500'
+                    }`} />
                     {conv.unread > 0 && (
-                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-500 rounded-full text-[10px] flex items-center justify-center font-bold">
+                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-500 rounded-full flex items-center justify-center text-[9px] font-bold">
                         {conv.unread > 9 ? '9+' : conv.unread}
                       </span>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-sm truncate ${conv.unread > 0 ? 'font-semibold text-white' : 'text-white/80'}`}>
+                    <div className="flex justify-between items-start">
+                      <span className={`text-xs truncate ${conv.unread > 0 ? 'font-semibold text-white' : 'text-white/80'}`}>
                         {conv.friendName}
                       </span>
-                      <span className="text-[10px] text-white/30">{formatTime(conv.lastTimestamp)}</span>
+                      {conv.lastTimestamp && (
+                        <span className="text-[9px] text-white/30 shrink-0 ml-1">{formatTime(conv.lastTimestamp)}</span>
+                      )}
                     </div>
-                    <div className="text-[10px] text-white/30 truncate">через {conv.accountLogin}</div>
-                    <div className={`text-xs truncate mt-0.5 ${conv.unread > 0 ? 'text-white/70' : 'text-white/40'}`}>
-                      {conv.lastMessage}
+                    <div className="text-[10px] text-white/30">через {conv.accountLogin}</div>
+                    <div className={`text-[11px] truncate mt-0.5 ${conv.unread > 0 ? 'text-white/70' : 'text-white/40'}`}>
+                      {conv.lastMessage || (conv.personaState ? 'Нет сообщений' : 'Оффлайн')}
                     </div>
                   </div>
                 </div>
@@ -253,142 +352,106 @@ export default function MultiChat(_props: MultiChatProps) {
         {selectedConversation ? (
           <>
             {/* Chat header */}
-            <div className="p-4 border-b border-white/5 flex items-center justify-between">
+            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="relative">
-                  {renderAvatar(selectedConversation.friendAvatarUrl, selectedConversation.friendAvatar || '👤', 'w-10 h-10')}
+                <div className="shrink-0">
+                  {renderAvatar(selectedConversation.friendAvatarUrl, selectedConversation.friendAvatar, 'w-10 h-10')}
                 </div>
                 <div>
-                  <div className="font-semibold">{selectedConversation.friendName}</div>
-                  <div className="text-[10px] text-white/30 flex items-center gap-2">
-                    <span>через {selectedConversation.accountLogin} • {selectedConversation.friendId}</span>
-                    {(selectedConversation.inventoryValue ?? inventoryCache[selectedConversation.friendId]) > 0 && (
-                      <span className="flex items-center gap-1 text-green-400">
-                        <Package className="w-3 h-3" />
-                        ${(selectedConversation.inventoryValue ?? inventoryCache[selectedConversation.friendId] ?? 0).toFixed(2)}
-                      </span>
+                  <div className="text-sm font-medium text-white">{selectedConversation.friendName}</div>
+                  <div className="text-[10px] text-white/30">
+                    через {selectedConversation.accountLogin} • {selectedConversation.friendId}
+                    {selectedConversation.inventoryValue && selectedConversation.inventoryValue > 0 && (
+                      <span className="ml-2 text-green-400">${selectedConversation.inventoryValue.toFixed(2)}</span>
                     )}
                   </div>
                 </div>
               </div>
 
+              {/* Translation controls */}
               <div className="flex items-center gap-2">
-                {/* Translate controls */}
-                <div className="flex items-center gap-1 text-xs">
-                  <button
-                    onClick={() => setTranslateIncoming(!translateIncoming)}
-                    className={`px-2 py-1 rounded-lg flex items-center gap-1 transition-colors ${
-                      translateIncoming ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-white/40'
-                    }`}
-                  >
-                    <Languages className="w-3 h-3" />
-                    Входящие→RU
-                  </button>
-                  <button
-                    onClick={() => setTranslateOutgoing(!translateOutgoing)}
-                    className={`px-2 py-1 rounded-lg flex items-center gap-1 transition-colors ${
-                      translateOutgoing ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-white/40'
-                    }`}
-                  >
-                    RU→{targetLang.toUpperCase()}
-                  </button>
-                  {translateOutgoing && (
-                    <select
-                      value={targetLang}
-                      onChange={e => setTargetLang(e.target.value as 'en' | 'ru')}
-                      className="bg-white/5 text-white/60 text-xs px-2 py-1 rounded-lg outline-none"
-                    >
-                      <option value="en" className="bg-dark-800">EN</option>
-                      <option value="ru" className="bg-dark-800">RU</option>
-                    </select>
-                  )}
-                </div>
-
                 <button
-                  onClick={() => setShowTemplates(!showTemplates)}
-                  className={`p-2 rounded-lg transition-colors ${showTemplates ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 text-white/40'}`}
+                  onClick={() => setTranslateIncoming(!translateIncoming)}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] transition-colors ${
+                    translateIncoming ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-white/40'
+                  }`}
+                  title="Переводить входящие на русский"
                 >
-                  <BookMarked className="w-4 h-4" />
+                  <Languages size={12} />
+                  EN→RU
                 </button>
+                <button
+                  onClick={() => setTranslateOutgoing(!translateOutgoing)}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] transition-colors ${
+                    translateOutgoing ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-white/40'
+                  }`}
+                  title="Переводить исходящие"
+                >
+                  <Languages size={12} />
+                  RU→{targetLang.toUpperCase()}
+                </button>
+                {translateOutgoing && (
+                  <select
+                    value={targetLang}
+                    onChange={e => setTargetLang(e.target.value as 'en' | 'ru')}
+                    className="bg-white/5 text-white/60 text-[10px] px-2 py-1 rounded-lg outline-none"
+                  >
+                    <option value="en" className="bg-gray-900">English</option>
+                    <option value="ru" className="bg-gray-900">Русский</option>
+                  </select>
+                )}
               </div>
             </div>
-
-            {/* Templates panel */}
-            {showTemplates && (
-              <div className="p-3 border-b border-white/5 bg-white/5">
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {templates.map((t, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setInputText(t)}
-                      className="px-2 py-1 rounded-lg bg-white/10 text-white/60 text-xs hover:bg-white/20"
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newTemplate}
-                    onChange={e => setNewTemplate(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && addTemplate()}
-                    placeholder="Новый шаблон..."
-                    className="flex-1 glass-input text-xs text-white px-3 py-2 rounded-lg outline-none"
-                  />
-                  <button onClick={addTemplate} className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20">
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {conversationMessages.map(msg => (
-                <div
-                  key={msg.id}
-                  className={`flex items-end gap-2 ${msg.isOutgoing ? 'flex-row-reverse' : ''}`}
-                >
-                  {!msg.isOutgoing && (
-                    <div className="shrink-0">
-                      {renderAvatar(selectedConversation.friendAvatarUrl, selectedConversation.friendAvatar || '👤', 'w-6 h-6')}
-                    </div>
-                  )}
+              {conversationMessages.length === 0 ? (
+                <div className="text-center text-xs text-white/20 py-8">
+                  Нет сообщений. Начните диалог!
+                </div>
+              ) : (
+                conversationMessages.map(msg => (
                   <div
-                    className={`max-w-[70%] px-3 py-2 rounded-2xl ${
-                      msg.isOutgoing
-                        ? 'bg-indigo-500/20 text-white rounded-br-sm'
-                        : 'bg-white/10 text-white/90 rounded-bl-sm'
-                    }`}
+                    key={msg.id}
+                    className={`flex gap-2 ${msg.isOutgoing ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className="text-sm">{msg.text}</div>
-                    {!msg.isOutgoing && translateIncoming && translatedMessages[msg.id] && (
-                      <div className="text-xs text-blue-400/70 mt-1 pt-1 border-t border-white/10">
-                        🇷🇺 {translatedMessages[msg.id]}
+                    {!msg.isOutgoing && (
+                      <div className="shrink-0 mt-auto">
+                        {renderAvatar(selectedConversation.friendAvatarUrl, '👤', 'w-6 h-6')}
                       </div>
                     )}
-                    <div className="text-[10px] text-white/30 mt-1">
-                      {formatTime(msg.timestamp)}
+                    <div className={`max-w-[60%] px-3 py-2 rounded-2xl text-sm ${
+                      msg.isOutgoing
+                        ? 'bg-indigo-500/20 text-white rounded-br-md'
+                        : 'bg-white/5 text-white/80 rounded-bl-md'
+                    }`}>
+                      <div>{msg.text}</div>
+                      {!msg.isOutgoing && translateIncoming && translatedMessages[msg.id] && (
+                        <div className="text-[11px] text-blue-400/80 mt-1 pt-1 border-t border-white/10">
+                          🇷🇺 {translatedMessages[msg.id]}
+                        </div>
+                      )}
+                      <div className="text-[9px] text-white/30 mt-1 text-right">
+                        {formatTime(msg.timestamp)}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Status indicators */}
+            {/* Translation status */}
             {(translateOutgoing || translating) && (
-              <div className="px-4 py-1 flex items-center gap-3 text-[10px]">
+              <div className="px-4 py-1 border-t border-white/5 flex items-center gap-3 text-[10px]">
                 {translateOutgoing && (
-                  <span className="text-green-400/60 flex items-center gap-1">
-                    <Languages className="w-3 h-3" />
-                    Авто-перевод RU → {targetLang.toUpperCase()}
+                  <span className="text-green-400/60">
+                    ✓ Авто-перевод RU → {targetLang.toUpperCase()}
                   </span>
                 )}
                 {translating && (
-                  <span className="text-blue-400/60 flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                  <span className="text-yellow-400/60 flex items-center gap-1">
+                    <div className="w-2 h-2 border border-yellow-400/40 border-t-yellow-400 rounded-full animate-spin" />
                     Переводим...
                   </span>
                 )}
@@ -396,9 +459,8 @@ export default function MultiChat(_props: MultiChatProps) {
             )}
 
             {/* Input */}
-            <div className="p-4 border-t border-white/5 flex gap-3">
+            <div className="p-3 border-t border-white/5 flex gap-2">
               <input
-                type="text"
                 value={inputText}
                 onChange={e => setInputText(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
@@ -407,22 +469,22 @@ export default function MultiChat(_props: MultiChatProps) {
               />
               <button
                 onClick={handleSendMessage}
-                disabled={!inputText.trim()}
-                className="px-4 py-3 rounded-xl bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 transition-colors disabled:opacity-30"
+                disabled={!inputText.trim() || translating}
+                className="glass-btn p-3 rounded-xl disabled:opacity-30"
               >
-                <Send className="w-5 h-5" />
+                <Send size={16} />
               </button>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-center">
-            <div>
-              <MessageSquare className="w-12 h-12 text-white/10 mx-auto mb-4" />
-              <div className="text-white/40">Выберите диалог</div>
-              <div className="text-xs text-white/20 mt-1">
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <MessageSquare size={48} className="mx-auto mb-4 text-white/10" />
+              <div className="text-lg text-white/30">Выберите диалог</div>
+              <div className="text-sm text-white/20 mt-1">
                 {conversations.length > 0
-                  ? 'Выберите диалог слева'
-                  : 'Диалоги появятся когда придут сообщения'}
+                  ? 'Выберите друга слева для начала переписки'
+                  : 'Подключите аккаунты для загрузки списка друзей'}
               </div>
             </div>
           </div>

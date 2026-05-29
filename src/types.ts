@@ -29,6 +29,10 @@ export interface SteamAccount {
   errorMessage?: string;
   ownerId?: string;
   steamApiKey?: string;
+  customName?: string;
+  customCountry?: string;
+  customBio?: string;
+  customAvatarUrl?: string;
 }
 
 export interface MaFile {
@@ -163,34 +167,73 @@ export interface NotificationSettings {
   notifyLogin: boolean;
 }
 
-// Chain Parser Types
-export interface ChainParseResult {
-  steamId: string;
-  displayName: string;
-  avatarUrl: string;
-  inventoryValue: number;
-  itemCount: number;
-  profileUrl: string;
-  depth: number;
-  foundVia: string; // steamId of who led us to this person
+// Friend Request Log
+export interface FriendRequestLog {
+  id: string;
+  accountId: string;
+  accountLogin: string;
+  targetSteamId: string;
+  targetName: string;
+  foundVia: string;
+  status: 'sent' | 'accepted' | 'declined' | 'error';
+  timestamp: string;
+  error?: string;
 }
 
-export interface ChainParseJob {
+// Spammer types
+export interface SpammerLog {
   id: string;
-  status: 'running' | 'completed' | 'cancelled' | 'error';
-  seedIds: string[];
-  minValue: number;
-  maxValue: number;
+  accountLogin: string;
+  friendName: string;
+  friendSteamId: string;
+  status: 'sent' | 'error' | 'skipped';
+  timestamp: string;
+  error?: string;
+}
+
+// Parser types
+export interface ParserConfig {
+  apiKey: string;
+  startIds: string[];
+  minPrice: number;
+  maxPrice: number;
   maxDepth: number;
-  targetCount: number;
-  results: ChainParseResult[];
-  scannedCount: number;
+  maxFriendsPerLevel: number;
+  threads: number;
+}
+
+export interface ParserResult {
+  steamId: string;
+  inventoryValue: number;
+  itemsCount: number;
+  country: string;
+  profileName: string;
+  profileUrl: string;
+  foundAt: string;
+}
+
+export interface ParserStats {
+  checked: number;
+  skippedCis: number;
+  skippedPrivate: number;
+  emptyInventory: number;
+  inventoryChecked: number;
+  foundValuable: number;
+  errors: number;
+  currentLevel: number;
   queueSize: number;
-  currentDepth: number;
+}
+
+export interface ParserJob {
+  id: string;
+  status: 'idle' | 'running' | 'paused' | 'completed' | 'error';
+  config: ParserConfig;
+  stats: ParserStats;
+  results: ParserResult[];
   logs: string[];
-  startedAt: string;
+  startedAt?: string;
   completedAt?: string;
   error?: string;
 }
 
-export type ActiveView = 'dashboard' | 'multichat' | 'browser' | 'offers' | 'spammer' | 'friends' | 'guard' | 'workers' | 'settings' | 'sda' | 'import' | 'domains' | 'notifications' | 'parser';
+export type ActiveView = 'dashboard' | 'multichat' | 'browser' | 'offers' | 'spammer' | 'friends' | 'guard' | 'workers' | 'settings' | 'sda' | 'import' | 'domains' | 'notifications' | 'account-manager' | 'parser';

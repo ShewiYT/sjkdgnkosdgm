@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Send, AlertCircle, Play, Square } from 'lucide-react';
+import { Megaphone, Play, Square, AlertTriangle, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { useAppStore } from '../store';
 import type { SteamAccount } from '../types';
 
 interface SpammerProps {
@@ -7,145 +7,167 @@ interface SpammerProps {
 }
 
 export default function Spammer({ accounts }: SpammerProps) {
-  const [selectedAccountId, setSelectedAccountId] = useState('');
-  const [message, setMessage] = useState('');
-  const [isRunning, setIsRunning] = useState(false);
-  const [sent, setSent] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [logs, setLogs] = useState<string[]>([]);
+  const {
+    spammerRunning, spammerMessage, spammerDelay, spammerLogs,
+    setSpammerMessage, setSpammerDelay, startSpammer, stopSpammer
+  } = useAppStore();
 
   const onlineAccounts = accounts.filter(a => a.status === 'online' || a.status === 'in-game');
-  const selectedAccount = accounts.find(a => a.id === selectedAccountId);
-
-  const startSpam = async () => {
-    if (!selectedAccountId || !message.trim()) return;
-    setIsRunning(true);
-    setSent(0);
-    setTotal(0);
-    setLogs([`Начинаем рассылку с аккаунта ${selectedAccount?.login}...`]);
-    
-    // Simulate spam process
-    const fakeCount = Math.floor(Math.random() * 20) + 5;
-    setTotal(fakeCount);
-    
-    for (let i = 0; i < fakeCount; i++) {
-      if (!isRunning) break;
-      await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
-      setSent(i + 1);
-      setLogs(prev => [...prev, `[${i + 1}/${fakeCount}] Отправлено сообщение пользователю...`]);
-    }
-    
-    setIsRunning(false);
-    setLogs(prev => [...prev, `Рассылка завершена. Отправлено: ${fakeCount}`]);
-  };
-
-  const stopSpam = () => {
-    setIsRunning(false);
-    setLogs(prev => [...prev, 'Рассылка остановлена']);
-  };
+  const sentCount = spammerLogs.filter(l => l.status === 'sent').length;
+  const errorCount = spammerLogs.filter(l => l.status === 'error').length;
 
   return (
-    <div className="p-6 space-y-6 overflow-y-auto h-full">
+    <div className="p-6 space-y-6 animate-fade-in overflow-y-auto max-h-[calc(100vh-52px)]">
       <div>
-        <h2 className="text-lg font-bold flex items-center gap-2">
-          <Send className="w-5 h-5 text-orange-400" />
+        <h1 className="text-2xl font-semibold text-white flex items-center gap-2">
+          <Megaphone size={24} />
           Спамер
-        </h2>
-        <p className="text-white/40 text-sm">Рассылка сообщений друзьям без переписки</p>
+        </h1>
+        <p className="text-sm text-white/40 mt-1">Рассылка сообщений друзьям без переписки</p>
       </div>
 
-      <div className="glass-card rounded-xl p-4 flex items-start gap-3 border-orange-500/20">
-        <AlertCircle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-        <div className="text-xs text-white/50">
-          Спамер отправляет сообщения только тем друзьям, с которыми у вас вообще нет переписки.
-          Используйте аккуратно — чрезмерная рассылка может привести к ограничениям Steam.
+      <div className="flex items-start gap-2 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+        <AlertTriangle size={16} className="text-yellow-400 mt-0.5 shrink-0" />
+        <div className="text-xs text-yellow-300/80">
+          Спамер отправляет сообщения только тем друзьям, с которыми нет переписки.
+          Все онлайн аккаунты участвуют автоматически. Нажмите «Запустить» для начала рассылки.
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <div className="glass-card rounded-xl p-5 space-y-4">
-            <h3 className="text-sm font-semibold">Настройки рассылки</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Settings */}
+        <div className="glass-card rounded-2xl p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-white">Настройки рассылки</h3>
 
-            <div>
-              <label className="text-white/40 text-xs mb-1 block">Аккаунт-отправитель</label>
-              <select
-                value={selectedAccountId}
-                onChange={e => setSelectedAccountId(e.target.value)}
-                className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none bg-transparent"
-                disabled={isRunning}
-              >
-                <option value="" className="bg-dark-800">Выберите аккаунт</option>
-                {onlineAccounts.map(acc => (
-                  <option key={acc.id} value={acc.id} className="bg-dark-800">
-                    {acc.login} ({acc.friendsCount} друзей)
-                  </option>
-                ))}
-              </select>
-              {onlineAccounts.length === 0 && (
-                <p className="text-xs text-orange-400 mt-1">Нет онлайн аккаунтов</p>
-              )}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-white/50">Аккаунты-отправители</label>
+              <span className="text-xs text-indigo-400">{onlineAccounts.length} онлайн</span>
             </div>
-
-            <div>
-              <label className="text-white/40 text-xs mb-1 block">Сообщение</label>
-              <textarea
-                value={message}
-                onChange={e => setMessage(e.target.value)}
-                className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none h-24 resize-none"
-                placeholder="Введите текст сообщения..."
-                disabled={isRunning}
-              />
-            </div>
-
-            <div className="pt-2">
-              {!isRunning ? (
-                <button
-                  onClick={startSpam}
-                  disabled={!selectedAccountId || !message.trim()}
-                  className="w-full glass-btn py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-30"
-                >
-                  <Play className="w-4 h-4" /> Начать рассылку
-                </button>
+            <div className="glass-input rounded-xl p-3 text-xs text-white/60 max-h-24 overflow-y-auto">
+              {onlineAccounts.length === 0 ? (
+                <span className="text-white/30">Нет онлайн аккаунтов. Подключите аккаунты.</span>
               ) : (
-                <button
-                  onClick={stopSpam}
-                  className="w-full py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-red-500/20 border border-red-500/30 text-red-400"
-                >
-                  <Square className="w-4 h-4" /> Остановить
-                </button>
+                <div className="flex flex-wrap gap-1">
+                  {onlineAccounts.map(acc => (
+                    <span key={acc.id} className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[10px]">
+                      {acc.login}
+                    </span>
+                  ))}
+                </div>
               )}
+            </div>
+            <div className="text-[10px] text-white/20 mt-1">
+              Все онлайн аккаунты участвуют автоматически
             </div>
           </div>
 
-          {/* Progress */}
-          {total > 0 && (
-            <div className="glass-card rounded-xl p-5 space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-white/50">Прогресс</span>
-                <span className="text-white">{sent} / {total}</span>
-              </div>
-              <div className="w-full bg-white/5 rounded-full h-2">
-                <div
-                  className="bg-gradient-to-r from-orange-500 to-red-500 h-2 rounded-full transition-all"
-                  style={{ width: `${(sent / total) * 100}%` }}
-                />
-              </div>
+          <div>
+            <label className="text-xs text-white/50 mb-1 block">Сообщение</label>
+            <textarea
+              value={spammerMessage}
+              onChange={e => setSpammerMessage(e.target.value)}
+              disabled={spammerRunning}
+              placeholder="Введите текст сообщения для рассылки..."
+              className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none h-32 resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-white/50 mb-1 block">Задержка между сообщениями (сек)</label>
+            <input
+              type="number"
+              value={spammerDelay}
+              onChange={e => setSpammerDelay(Math.max(1, Math.min(60, parseInt(e.target.value) || 3)))}
+              disabled={spammerRunning}
+              min={1}
+              max={60}
+              className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            {!spammerRunning ? (
+              <button
+                onClick={startSpammer}
+                disabled={onlineAccounts.length === 0 || !spammerMessage.trim()}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-green-500/20 text-green-400 text-sm hover:bg-green-500/30 transition-colors disabled:opacity-30"
+              >
+                <Play size={16} />
+                Запустить
+              </button>
+            ) : (
+              <button
+                onClick={stopSpammer}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-red-500/20 text-red-400 text-sm hover:bg-red-500/30 transition-colors"
+              >
+                <Square size={16} />
+                Остановить
+              </button>
+            )}
+          </div>
+
+          {spammerRunning && (
+            <div className="flex items-center gap-2 text-xs text-yellow-400">
+              <div className="w-3 h-3 border-2 border-yellow-400/30 border-t-yellow-400 rounded-full animate-spin" />
+              Рассылка идёт...
             </div>
           )}
         </div>
 
-        {/* Logs */}
-        <div className="glass-card rounded-xl p-5 space-y-3">
-          <h3 className="text-sm font-semibold">Лог</h3>
-          <div className="h-64 overflow-y-auto text-xs font-mono space-y-1 bg-black/20 rounded-lg p-3">
-            {logs.length === 0 ? (
-              <div className="text-white/20">Логи появятся здесь...</div>
-            ) : (
-              logs.map((log, i) => (
-                <div key={i} className="text-white/50">{log}</div>
-              ))
-            )}
+        {/* Stats & Logs */}
+        <div className="space-y-4">
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="glass-card rounded-xl p-3 text-center">
+              <div className="text-lg font-bold text-green-400">{sentCount}</div>
+              <div className="text-[10px] text-white/40">Отправлено</div>
+            </div>
+            <div className="glass-card rounded-xl p-3 text-center">
+              <div className="text-lg font-bold text-red-400">{errorCount}</div>
+              <div className="text-[10px] text-white/40">Ошибки</div>
+            </div>
+            <div className="glass-card rounded-xl p-3 text-center">
+              <div className="text-lg font-bold text-white">{spammerLogs.length}</div>
+              <div className="text-[10px] text-white/40">Всего</div>
+            </div>
+          </div>
+
+          {/* Logs */}
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/5">
+              <h3 className="text-sm font-semibold text-white">Логи рассылки</h3>
+            </div>
+            <div className="max-h-80 overflow-y-auto divide-y divide-white/5">
+              {spammerLogs.length === 0 ? (
+                <div className="p-8 text-center text-xs text-white/30">
+                  Нет логов. Запустите рассылку.
+                </div>
+              ) : (
+                [...spammerLogs].reverse().map(log => (
+                  <div key={log.id} className="px-4 py-2 flex items-center gap-2">
+                    {log.status === 'sent' ? (
+                      <CheckCircle size={12} className="text-green-400 shrink-0" />
+                    ) : log.status === 'error' ? (
+                      <XCircle size={12} className="text-red-400 shrink-0" />
+                    ) : (
+                      <Clock size={12} className="text-yellow-400 shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-white truncate">
+                        <span className="text-white/50">{log.accountLogin}</span>
+                        {' → '}
+                        <span>{log.friendName}</span>
+                      </div>
+                      {log.error && <div className="text-[10px] text-red-400">{log.error}</div>}
+                    </div>
+                    <div className="text-[9px] text-white/20 shrink-0">
+                      {new Date(log.timestamp).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>

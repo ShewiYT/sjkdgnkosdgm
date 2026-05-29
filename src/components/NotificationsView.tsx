@@ -97,9 +97,7 @@ export default function NotificationsView() {
               placeholder="123456789:ABCdef..."
               className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none font-mono"
             />
-            <div className="text-[10px] text-white/20 mt-1">
-              Получите токен у @BotFather
-            </div>
+            <div className="text-[10px] text-white/20 mt-1">Получите токен у @BotFather</div>
           </div>
 
           <div>
@@ -190,7 +188,7 @@ export default function NotificationsView() {
                 onChange={e => updateNotificationSettings({ [item.key]: e.target.checked })}
                 className="w-4 h-4 rounded"
               />
-              <span className="text-sm text-white/70">{item.label}</span>
+              <span className="text-xs text-white/70">{item.label}</span>
             </label>
           ))}
         </div>
