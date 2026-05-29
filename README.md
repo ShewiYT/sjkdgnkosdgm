@@ -1,4 +1,4 @@
-
+# SukaCombine - Steam Panel v2.0
 
 Панель управления Steam аккаунтами с серверной базой данных SQLite.
 
@@ -56,7 +56,7 @@ pm2 startup
 
 ## База данных
 
-**SQLite** - данные хранятся на сервере в файле 
+**SQLite** - данные хранятся на сервере в файле `./data/sukacombine.db`
 
 ### Таблицы:
 - `users` - пользователи
@@ -70,7 +70,10 @@ pm2 startup
 - `inventory_cache` - кэш инвентарей
 - `settings` - настройки
 
-
+### Резервное копирование:
+```bash
+cp ./data/sukacombine.db ./data/backup_$(date +%Y%m%d).db
+```
 
 ## Парсер Steam ID
 
@@ -179,4 +182,4 @@ POST /api/clear               - Очистка БД
 
 ## Лицензия
 
-
+Private - Suka Team
