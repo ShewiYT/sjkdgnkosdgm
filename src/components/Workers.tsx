@@ -24,7 +24,9 @@ export default function Workers({ accounts }: WorkersProps) {
   };
 
   const toggleAccount = (accId: string) => {
-    setSelectedAccounts(prev => prev.includes(accId) ? prev.filter(id => id !== accId) : [...prev, accId]);
+    setSelectedAccounts(prev =>
+      prev.includes(accId) ? prev.filter(id => id !== accId) : [...prev, accId]
+    );
   };
 
   return (
@@ -51,11 +53,21 @@ export default function Workers({ accounts }: WorkersProps) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-white/50 mb-1 block">Логин</label>
-              <input value={newUsername} onChange={e => setNewUsername(e.target.value)} className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none" placeholder="worker1" />
+              <input
+                value={newUsername}
+                onChange={e => setNewUsername(e.target.value)}
+                className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none"
+                placeholder="worker1"
+              />
             </div>
             <div>
               <label className="text-xs text-white/50 mb-1 block">Пароль</label>
-              <input value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none" placeholder="••••••" />
+              <input
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none"
+                placeholder="••••••"
+              />
             </div>
           </div>
 
@@ -67,7 +79,9 @@ export default function Workers({ accounts }: WorkersProps) {
                   key={acc.id}
                   onClick={() => toggleAccount(acc.id)}
                   className={`px-2 py-1 rounded-lg text-xs transition-colors ${
-                    selectedAccounts.includes(acc.id) ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 text-white/40'
+                    selectedAccounts.includes(acc.id)
+                      ? 'bg-indigo-500/20 text-indigo-400'
+                      : 'bg-white/5 text-white/40'
                   }`}
                 >
                   {acc.login}
@@ -77,10 +91,16 @@ export default function Workers({ accounts }: WorkersProps) {
           </div>
 
           <div className="flex gap-2">
-            <button onClick={handleCreate} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-green-500/20 text-green-400 text-xs hover:bg-green-500/30">
+            <button
+              onClick={handleCreate}
+              className="flex items-center gap-1 px-4 py-2 rounded-xl bg-green-500/20 text-green-400 text-xs hover:bg-green-500/30"
+            >
               <Save size={12} /> Создать
             </button>
-            <button onClick={() => setShowCreate(false)} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-white/5 text-white/50 text-xs hover:bg-white/10">
+            <button
+              onClick={() => setShowCreate(false)}
+              className="flex items-center gap-1 px-4 py-2 rounded-xl bg-white/5 text-white/50 text-xs hover:bg-white/10"
+            >
               <X size={12} /> Отмена
             </button>
           </div>
@@ -100,10 +120,14 @@ export default function Workers({ accounts }: WorkersProps) {
                 <div>
                   <div className="text-sm text-white font-medium">{worker.username}</div>
                   <div className="text-[10px] text-white/30">
-                    {worker.assignedAccounts.length} аккаунтов • Последняя активность: {new Date(worker.lastActive).toLocaleString('ru')}
+                    {worker.assignedAccounts.length} аккаунтов • Последняя активность:{' '}
+                    {new Date(worker.lastActive).toLocaleString('ru')}
                   </div>
                 </div>
-                <button onClick={() => removeWorker(worker.id)} className="p-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-500/10">
+                <button
+                  onClick={() => removeWorker(worker.id)}
+                  className="p-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-500/10"
+                >
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -111,7 +135,9 @@ export default function Workers({ accounts }: WorkersProps) {
                 {worker.assignedAccounts.map(accId => {
                   const acc = accounts.find(a => a.id === accId);
                   return acc ? (
-                    <span key={accId} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/50">{acc.login}</span>
+                    <span key={accId} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/50">
+                      {acc.login}
+                    </span>
                   ) : null;
                 })}
               </div>

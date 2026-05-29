@@ -39,39 +39,70 @@ export default function Offers({ accounts, offers }: OffersProps) {
                       </div>
                     </div>
                   </div>
-                  <span className={`text-xs px-3 py-1 rounded-full ${
-                    offer.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                    offer.status === 'accepted' ? 'bg-green-500/20 text-green-400' :
-                    'bg-red-500/20 text-red-400'
-                  }`}>
+                  <span
+                    className={`text-xs px-3 py-1 rounded-full ${
+                      offer.status === 'pending'
+                        ? 'bg-yellow-500/20 text-yellow-400'
+                        : offer.status === 'accepted'
+                        ? 'bg-green-500/20 text-green-400'
+                        : 'bg-red-500/20 text-red-400'
+                    }`}
+                  >
                     <span className="flex items-center gap-1">
-                      {offer.status === 'pending' ? <Clock size={10} /> : offer.status === 'accepted' ? <Check size={10} /> : <X size={10} />}
-                      {offer.status === 'pending' ? 'Ожидает' : offer.status === 'accepted' ? 'Принят' : 'Отклонен'}
+                      {offer.status === 'pending' ? (
+                        <Clock size={10} />
+                      ) : offer.status === 'accepted' ? (
+                        <Check size={10} />
+                      ) : (
+                        <X size={10} />
+                      )}
+                      {offer.status === 'pending'
+                        ? 'Ожидает'
+                        : offer.status === 'accepted'
+                        ? 'Принят'
+                        : 'Отклонен'}
                     </span>
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-[10px] text-red-400/70 mb-1">Отдаём ({offer.itemsGive.length})</div>
+                    <div className="text-[10px] text-red-400/70 mb-1">
+                      Отдаём ({offer.itemsGive.length})
+                    </div>
                     <div className="space-y-1 max-h-32 overflow-y-auto">
                       {offer.itemsGive.map(item => (
                         <div key={item.id} className="text-xs text-white/60 bg-red-500/5 px-2 py-1 rounded">
-                          {item.name} {item.price > 0 && <span className="text-white/30">${item.price.toFixed(2)}</span>}
+                          {item.name}{' '}
+                          {item.price > 0 && (
+                            <span className="text-white/30">${item.price.toFixed(2)}</span>
+                          )}
                         </div>
                       ))}
-                      {offer.itemsGive.length === 0 && <div className="text-xs text-white/20">Ничего</div>}
+                      {offer.itemsGive.length === 0 && (
+                        <div className="text-xs text-white/20">Ничего</div>
+                      )}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-green-400/70 mb-1">Получаем ({offer.itemsReceive.length})</div>
+                    <div className="text-[10px] text-green-400/70 mb-1">
+                      Получаем ({offer.itemsReceive.length})
+                    </div>
                     <div className="space-y-1 max-h-32 overflow-y-auto">
                       {offer.itemsReceive.map(item => (
-                        <div key={item.id} className="text-xs text-white/60 bg-green-500/5 px-2 py-1 rounded">
-                          {item.name} {item.price > 0 && <span className="text-white/30">${item.price.toFixed(2)}</span>}
+                        <div
+                          key={item.id}
+                          className="text-xs text-white/60 bg-green-500/5 px-2 py-1 rounded"
+                        >
+                          {item.name}{' '}
+                          {item.price > 0 && (
+                            <span className="text-white/30">${item.price.toFixed(2)}</span>
+                          )}
                         </div>
                       ))}
-                      {offer.itemsReceive.length === 0 && <div className="text-xs text-white/20">Ничего</div>}
+                      {offer.itemsReceive.length === 0 && (
+                        <div className="text-xs text-white/20">Ничего</div>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -8,8 +8,14 @@ interface SpammerProps {
 
 export default function Spammer({ accounts }: SpammerProps) {
   const {
-    spammerRunning, spammerMessage, spammerDelay, spammerLogs,
-    setSpammerMessage, setSpammerDelay, startSpammer, stopSpammer
+    spammerRunning,
+    spammerMessage,
+    spammerDelay,
+    spammerLogs,
+    setSpammerMessage,
+    setSpammerDelay,
+    startSpammer,
+    stopSpammer,
   } = useAppStore();
 
   const onlineAccounts = accounts.filter(a => a.status === 'online' || a.status === 'in-game');
@@ -49,7 +55,10 @@ export default function Spammer({ accounts }: SpammerProps) {
               ) : (
                 <div className="flex flex-wrap gap-1">
                   {onlineAccounts.map(acc => (
-                    <span key={acc.id} className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[10px]">
+                    <span
+                      key={acc.id}
+                      className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[10px]"
+                    >
                       {acc.login}
                     </span>
                   ))}
@@ -74,9 +83,12 @@ export default function Spammer({ accounts }: SpammerProps) {
             <input
               type="number"
               value={spammerDelay}
-              onChange={e => setSpammerDelay(Math.max(1, Math.min(60, parseInt(e.target.value) || 3)))}
+              onChange={e =>
+                setSpammerDelay(Math.max(1, Math.min(60, parseInt(e.target.value) || 3)))
+              }
               disabled={spammerRunning}
-              min={1} max={60}
+              min={1}
+              max={60}
               className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none"
             />
           </div>
@@ -140,10 +152,16 @@ export default function Spammer({ accounts }: SpammerProps) {
                         {' → '}
                         <span>{log.friendName}</span>
                       </div>
-                      {log.error && <div className="text-[10px] text-red-400">{log.error}</div>}
+                      {log.error && (
+                        <div className="text-[10px] text-red-400">{log.error}</div>
+                      )}
                     </div>
                     <div className="text-[9px] text-white/20 shrink-0">
-                      {new Date(log.timestamp).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      {new Date(log.timestamp).toLocaleTimeString('ru', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })}
                     </div>
                   </div>
                 ))

@@ -1,8 +1,9 @@
-import { Settings, Download, Trash2, Database } from 'lucide-react';
+import { Settings, Download, Trash2, Database, Key } from 'lucide-react';
 import { useAppStore } from '../store';
 
 export default function SettingsView() {
-  const { accounts, clearAccounts } = useAppStore();
+  const { accounts, clearAccounts, steamMarketApiKey, setSteamMarketApiKey, fetchInventoryValues } =
+    useAppStore();
 
   const exportData = () => {
     const data = {
@@ -48,13 +49,37 @@ export default function SettingsView() {
       </div>
 
       <div className="space-y-4 max-w-2xl">
+        {/* Steam Market API key */}
+        <div className="glass-card rounded-2xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Key size={16} className="text-indigo-400" />
+            Steam Market API Key
+          </h3>
+          <p className="text-xs text-white/30">
+            Используется для получения стоимости инвентаря в мультичате и дашборде.
+          </p>
+          <input
+            type="text"
+            value={steamMarketApiKey}
+            onChange={e => setSteamMarketApiKey(e.target.value)}
+            placeholder="5E2360739CA18D2898E957F7936DA9AE"
+            className="w-full glass-input text-sm text-white px-3 py-2 rounded-xl outline-none font-mono"
+          />
+          <button
+            onClick={fetchInventoryValues}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-400 text-xs hover:bg-indigo-500/30 transition-colors"
+          >
+            🔄 Обновить стоимость инвентарей (онлайн аккаунты)
+          </button>
+        </div>
+
         <div className="glass-card rounded-2xl p-4 space-y-3">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             <Database size={16} />
             Данные
           </h3>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={exportData}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-white/60 text-xs hover:bg-white/10 transition-colors"
@@ -76,13 +101,19 @@ export default function SettingsView() {
             База данных SQLite
           </h3>
           <div className="text-xs text-white/40 space-y-1">
-            <div>📁 Файл: <code className="text-indigo-400">./data/sukacombine.db</code></div>
-            <div>📊 Таблицы: users, workers, accounts, messages, trade_offers, parser_keys, parse_jobs, settings</div>
+            <div>
+              📁 Файл: <code className="text-indigo-400">./data/sukacombine.db</code>
+            </div>
+            <div>
+              📊 Таблицы: users, workers, accounts, messages, trade_offers, parser_keys, parse_jobs,
+              settings
+            </div>
             <div>⚡ WAL mode для лучшей производительности</div>
             <div>🔄 Автосохранение при каждом изменении</div>
           </div>
           <div className="text-[10px] text-white/20">
-            Бэкап: <code>cp ./data/sukacombine.db ./data/backup_$(date +%Y%m%d).db</code>
+            Бэкап:{' '}
+            <code>cp ./data/sukacombine.db ./data/backup_$(date +%Y%m%d).db</code>
           </div>
         </div>
 
@@ -104,8 +135,8 @@ export default function SettingsView() {
           <div className="text-sm text-white font-medium mb-1">SukaCombine v3.0</div>
           <div className="text-xs text-white/30">Steam Panel • SQLite DB • Suka Team</div>
           <div className="text-[10px] text-white/20 mt-2">
-            Аккаунтов: {accounts.length} •
-            Онлайн: {accounts.filter(a => a.status === 'online' || a.status === 'in-game').length}
+            Аккаунтов: {accounts.length} • Онлайн:{' '}
+            {accounts.filter(a => a.status === 'online' || a.status === 'in-game').length}
           </div>
         </div>
       </div>

@@ -59,17 +59,35 @@ export default function SecurityView({ accounts }: SecurityViewProps) {
                 )}
                 <span className="text-sm text-white truncate">{acc.login}</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {acc.guardEnabled ? (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">Guard ✓</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">
+                    Guard ✓
+                  </span>
                 ) : (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">No Guard</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
+                    No Guard
+                  </span>
                 )}
-                {acc.tradeBan && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">Trade Ban</span>}
-                {acc.vacBan && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">VAC</span>}
-                {acc.limited && <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400">Limited</span>}
+                {acc.tradeBan && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
+                    Trade Ban
+                  </span>
+                )}
+                {acc.vacBan && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
+                    VAC
+                  </span>
+                )}
+                {acc.limited && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400">
+                    Limited
+                  </span>
+                )}
                 {!acc.tradeBan && !acc.vacBan && !acc.limited && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">Clean</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">
+                    Clean
+                  </span>
                 )}
               </div>
             </div>

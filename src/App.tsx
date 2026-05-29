@@ -22,8 +22,14 @@ import type { ActiveView, SteamAccount } from './types';
 
 export default function App() {
   const {
-    currentUser, logout, getVisibleAccounts, tradeOffers,
-    connectAll, disconnectAll, refreshStatuses, loadAccountsFromServer
+    currentUser,
+    logout,
+    getVisibleAccounts,
+    tradeOffers,
+    connectAll,
+    disconnectAll,
+    refreshStatuses,
+    loadAccountsFromServer,
   } = useAppStore();
 
   const [activeView, setActiveView] = useState<ActiveView>('import');
@@ -45,7 +51,9 @@ export default function App() {
   }
 
   const isAdmin = currentUser.role === 'admin';
-  const onlineCount = accounts.filter(a => a.status === 'online' || a.status === 'in-game').length;
+  const onlineCount = accounts.filter(
+    a => a.status === 'online' || a.status === 'in-game'
+  ).length;
 
   const handleConnectAll = () => {
     if (onlineCount === accounts.length && accounts.length > 0) {
@@ -82,9 +90,13 @@ export default function App() {
       case 'notifications':
         return <NotificationsView />;
       case 'domains':
-        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/30">Нет доступа</div>;
+        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/40">Нет доступа</div>;
       case 'workers':
-        return isAdmin ? <Workers accounts={accounts} /> : <div className="p-6 text-white/30">Нет доступа</div>;
+        return isAdmin ? (
+          <Workers accounts={accounts} />
+        ) : (
+          <div className="p-6 text-white/40">Нет доступа</div>
+        );
       case 'settings':
         return <SettingsView />;
       default:
@@ -93,7 +105,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-dark-900 text-white">
+    <div className="flex h-screen bg-dark-900 overflow-hidden">
       <Sidebar
         activeView={activeView}
         setActiveView={setActiveView}
@@ -103,7 +115,8 @@ export default function App() {
         onLogout={logout}
         username={currentUser.username}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
+
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <AccountBar
           accounts={accounts}
           selectedAccount={selectedAccount}
@@ -111,9 +124,7 @@ export default function App() {
           onConnectAll={handleConnectAll}
           onlineCount={onlineCount}
         />
-        <div className="flex-1 overflow-hidden">
-          {renderView()}
-        </div>
+        <div className="flex-1 overflow-hidden">{renderView()}</div>
       </div>
     </div>
   );

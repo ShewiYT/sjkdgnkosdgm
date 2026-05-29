@@ -41,7 +41,10 @@ export default function DomainsView() {
             <option value="panel" className="bg-gray-900">Панель</option>
             <option value="api" className="bg-gray-900">API</option>
           </select>
-          <button onClick={handleAdd} className="flex items-center gap-1 px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-400 text-sm hover:bg-indigo-500/30 transition-colors">
+          <button
+            onClick={handleAdd}
+            className="flex items-center gap-1 px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-400 text-sm hover:bg-indigo-500/30 transition-colors"
+          >
             <Plus size={14} /> Добавить
           </button>
         </div>
@@ -55,7 +58,10 @@ export default function DomainsView() {
           </div>
         ) : (
           domains.map(domain => (
-            <div key={domain.id} className="glass-card rounded-2xl p-4 flex items-center justify-between">
+            <div
+              key={domain.id}
+              className="glass-card rounded-2xl p-4 flex items-center justify-between"
+            >
               <div className="flex items-center gap-3">
                 {domain.status === 'active' ? (
                   <CheckCircle size={16} className="text-green-400" />
@@ -67,9 +73,13 @@ export default function DomainsView() {
                 <div>
                   <div className="text-sm text-white font-medium">{domain.domain}</div>
                   <div className="text-[10px] text-white/30">
-                    {domain.target === 'panel' ? 'Панель' : 'API'} •
-                    {domain.ssl ? ' SSL ✓' : ' Без SSL'} •
-                    {domain.status === 'active' ? ' Активен' : domain.status === 'error' ? ' Ошибка' : ' Ожидание'}
+                    {domain.target === 'panel' ? 'Панель' : 'API'} •{' '}
+                    {domain.ssl ? ' SSL ✓' : ' Без SSL'} •{' '}
+                    {domain.status === 'active'
+                      ? ' Активен'
+                      : domain.status === 'error'
+                      ? ' Ошибка'
+                      : ' Ожидание'}
                   </div>
                 </div>
               </div>

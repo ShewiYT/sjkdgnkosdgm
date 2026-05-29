@@ -3,8 +3,16 @@ import { persist } from 'zustand/middleware';
 import { steamApi } from './api';
 import { sendNotification, NotificationTemplates, DiscordTemplates } from './notifications';
 import type {
-  SteamAccount, ChatMessage, TradeOffer, Worker, MaFile, User,
-  DomainConfig, NotificationSettings, FriendRequestLog, SpammerLog
+  SteamAccount,
+  ChatMessage,
+  TradeOffer,
+  Worker,
+  MaFile,
+  User,
+  DomainConfig,
+  NotificationSettings,
+  FriendRequestLog,
+  SpammerLog,
 } from './types';
 
 interface AppStore {
@@ -17,6 +25,7 @@ interface AppStore {
   updateWorker: (id: string, data: Partial<Worker>) => void;
   removeWorker: (id: string) => void;
   loadWorkers: () => void;
+
   accounts: SteamAccount[];
   addAccount: (login: string, password: string, maFile?: MaFile) => void;
   addAccounts: (accountsData: { login: string; password: string; maFile?: MaFile }[]) => void;
@@ -31,25 +40,49 @@ interface AppStore {
   refreshStatuses: () => Promise<void>;
   loadAccountsFromServer: () => Promise<void>;
   saveAccountsToServer: () => Promise<void>;
+
   messages: ChatMessage[];
   addMessage: (message: ChatMessage) => void;
   fetchNewMessages: () => Promise<void>;
-  sendMessage: (accountId: string, friendSteamId: string, friendName: string, text: string) => Promise<boolean>;
+  sendMessage: (
+    accountId: string,
+    friendSteamId: string,
+    friendName: string,
+    text: string
+  ) => Promise<boolean>;
+
   tradeOffers: TradeOffer[];
   domains: DomainConfig[];
   addDomain: (domain: string, target: 'panel' | 'api') => void;
   removeDomain: (id: string) => void;
   updateDomain: (id: string, data: Partial<DomainConfig>) => void;
+
   notificationSettings: NotificationSettings;
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => void;
   notify: (tgMsg: string, discordMsg: string) => Promise<void>;
+
+  // ── Friend-network add ────────────────────────────────────────────────────
   steamIdsToAdd: string;
   setSteamIdsToAdd: (ids: string) => void;
+  friendNetworkSteamIds: string; // NEW: target Steam IDs for network exploration
+  setFriendNetworkSteamIds: (ids: string) => void;
+
   friendRequestLogs: FriendRequestLog[];
   friendRequestRunning: boolean;
-  startFriendRequests: (steamIds: string[], requestsPerAccount: number, delaySeconds: number) => Promise<void>;
+  startFriendRequests: (
+    steamIds: string[],
+    requestsPerAccount: number,
+    delaySeconds: number
+  ) => Promise<void>;
   stopFriendRequests: () => void;
   addFriendRequestLog: (log: FriendRequestLog) => void;
+
+  // ── Network friend crawler ────────────────────────────────────────────────
+  friendCrawlerRunning: boolean;
+  friendCrawlerLogs: FriendRequestLog[];
+  startFriendNetworkCrawler: (targetSteamIds: string[], maxDepth: number) => Promise<void>;
+  stopFriendNetworkCrawler: () => void;
+
   spammerRunning: boolean;
   spammerMessage: string;
   spammerDelay: number;
@@ -58,9 +91,15 @@ interface AppStore {
   setSpammerDelay: (delay: number) => void;
   startSpammer: () => Promise<void>;
   stopSpammer: () => void;
+
+  // ── Inventory value via Steam API ─────────────────────────────────────────
+  steamMarketApiKey: string;
+  setSteamMarketApiKey: (key: string) => void;
+  fetchInventoryValues: () => Promise<void>;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
+
 const avatarEmojis = ['🎮', '👾', '🕹️', '🎯', '🔫', '⚔️', '🛡️', '💀', '🤖', '👽', '🐉', '🦊', '🐺', '🦅', '🦈'];
 const servers = ['EU-1', 'EU-2', 'EU-3', 'RU-1', 'RU-2', 'US-1', 'US-2'];
 
@@ -71,7 +110,6 @@ const DEFAULT_ADMIN: User = {
   assignedAccounts: [],
   createdAt: new Date().toISOString(),
 };
-
 const DEFAULT_ADMIN_PASSWORD = 'admin123';
 
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
@@ -90,6 +128,7 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
 
 let _spammerAbort = false;
 let _friendRequestAbort = false;
+let _friendCrawlerAbort = false;
 
 export const useAppStore = create<AppStore>()(
   persist(
@@ -103,12 +142,16 @@ export const useAppStore = create<AppStore>()(
       domains: [],
       notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
       steamIdsToAdd: '',
+      friendNetworkSteamIds: '',
       friendRequestLogs: [],
       friendRequestRunning: false,
+      friendCrawlerRunning: false,
+      friendCrawlerLogs: [],
       spammerRunning: false,
       spammerMessage: '',
       spammerDelay: 3,
       spammerLogs: [],
+      steamMarketApiKey: '5E2360739CA18D2898E957F7936DA9AE',
 
       login: async (username, password) => {
         try {
@@ -130,7 +173,9 @@ export const useAppStore = create<AppStore>()(
             await get().loadAccountsFromServer();
             return true;
           }
-          const worker = get().workers.find(w => w.username === username && w.password === password);
+          const worker = get().workers.find(
+            w => w.username === username && w.password === password
+          );
           if (worker) {
             set({
               currentUser: {
@@ -157,9 +202,7 @@ export const useAppStore = create<AppStore>()(
           if (data.accounts && Array.isArray(data.accounts)) {
             set({ accounts: data.accounts });
           }
-        } catch {
-          // Use local storage as fallback
-        }
+        } catch { /* Use local storage as fallback */ }
       },
 
       saveAccountsToServer: async () => {
@@ -169,9 +212,7 @@ export const useAppStore = create<AppStore>()(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ accounts: get().accounts }),
           });
-        } catch {
-          // Ignore
-        }
+        } catch { /* Ignore */ }
       },
 
       addWorker: (data) => {
@@ -179,30 +220,40 @@ export const useAppStore = create<AppStore>()(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
-        }).then(res => res.json()).then(result => {
-          if (result.success && result.worker) {
-            set(state => ({ workers: [...state.workers, result.worker] }));
-          }
-        }).catch(() => {
-          const newWorker: Worker = {
-            id: generateId(),
-            username: data.username,
-            password: data.password,
-            assignedAccounts: data.assignedAccounts,
-            permissions: { chat: true, browser: false, offersSend: false, offersSendAll: false, offersConfirm: false, guard: false },
-            lastActive: new Date().toISOString(),
-            actionsLog: [],
-          };
-          set(state => ({ workers: [...state.workers, newWorker] }));
-        });
+        })
+          .then(res => res.json())
+          .then(result => {
+            if (result.success && result.worker) {
+              set(state => ({ workers: [...state.workers, result.worker] }));
+            }
+          })
+          .catch(() => {
+            const newWorker: Worker = {
+              id: generateId(),
+              username: data.username,
+              password: data.password,
+              assignedAccounts: data.assignedAccounts,
+              permissions: {
+                chat: true,
+                browser: false,
+                offersSend: false,
+                offersSendAll: false,
+                offersConfirm: false,
+                guard: false,
+              },
+              lastActive: new Date().toISOString(),
+              actionsLog: [],
+            };
+            set(state => ({ workers: [...state.workers, newWorker] }));
+          });
       },
 
       updateWorker: (id, data) => {
-        set(state => ({ workers: state.workers.map(w => w.id === id ? { ...w, ...data } : w) }));
+        set(state => ({ workers: state.workers.map(w => (w.id === id ? { ...w, ...data } : w)) }));
         fetch(`/api/workers/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+          body: JSON.stringify(data),
         }).catch(() => {});
       },
 
@@ -212,9 +263,12 @@ export const useAppStore = create<AppStore>()(
       },
 
       loadWorkers: () => {
-        fetch('/api/workers').then(res => res.json()).then(data => {
-          if (data.workers) set({ workers: data.workers });
-        }).catch(() => {});
+        fetch('/api/workers')
+          .then(res => res.json())
+          .then(data => {
+            if (data.workers) set({ workers: data.workers });
+          })
+          .catch(() => {});
       },
 
       addAccount: (login, password, maFile) => {
@@ -282,7 +336,9 @@ export const useAppStore = create<AppStore>()(
       },
 
       updateAccount: (id, data) => {
-        set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, ...data } : a) }));
+        set(state => ({
+          accounts: state.accounts.map(a => (a.id === id ? { ...a, ...data } : a)),
+        }));
         get().saveAccountsToServer();
       },
 
@@ -294,7 +350,7 @@ export const useAppStore = create<AppStore>()(
         const visibleIds = new Set(visibleAccounts.map(a => a.id));
         set(state => ({
           accounts: state.accounts.filter(a => !visibleIds.has(a.id)),
-          messages: []
+          messages: [],
         }));
         get().saveAccountsToServer();
       },
@@ -314,28 +370,36 @@ export const useAppStore = create<AppStore>()(
         set(state => ({
           accounts: state.accounts.map(a =>
             a.id === id ? { ...a, status: 'connecting' as const, errorMessage: undefined } : a
-          )
+          ),
         }));
         try {
-          const result = await steamApi.login(id, acc.login, acc.password, acc.maFile?.shared_secret, acc.maFile?.identity_secret);
+          const result = await steamApi.login(
+            id,
+            acc.login,
+            acc.password,
+            acc.maFile?.shared_secret,
+            acc.maFile?.identity_secret
+          );
           if (result.success || result.status === 'online') {
             set(state => ({
               accounts: state.accounts.map(a =>
-                a.id === id ? {
-                  ...a,
-                  status: 'online' as const,
-                  steamId: result.steamId || a.steamId,
-                  level: result.level ?? a.level,
-                  balance: result.balance ?? a.balance,
-                  inventoryValue: result.inventoryValue ?? a.inventoryValue,
-                  friendsCount: result.friendsCount ?? a.friendsCount,
-                  avatarUrl: result.avatarUrl || a.avatarUrl,
-                  displayName: result.displayName || a.displayName,
-                  tradeBan: result.tradeBan ?? a.tradeBan,
-                  vacBan: result.vacBan ?? a.vacBan,
-                  limited: result.limited ?? a.limited,
-                  errorMessage: undefined,
-                } : a
+                a.id === id
+                  ? {
+                      ...a,
+                      status: 'online' as const,
+                      steamId: result.steamId || a.steamId,
+                      level: result.level ?? a.level,
+                      balance: result.balance ?? a.balance,
+                      inventoryValue: result.inventoryValue ?? a.inventoryValue,
+                      friendsCount: result.friendsCount ?? a.friendsCount,
+                      avatarUrl: result.avatarUrl || a.avatarUrl,
+                      displayName: result.displayName || a.displayName,
+                      tradeBan: result.tradeBan ?? a.tradeBan,
+                      vacBan: result.vacBan ?? a.vacBan,
+                      limited: result.limited ?? a.limited,
+                      errorMessage: undefined,
+                    }
+                  : a
               ),
             }));
             const ns = get().notificationSettings;
@@ -350,13 +414,13 @@ export const useAppStore = create<AppStore>()(
             set(state => ({
               accounts: state.accounts.map(a =>
                 a.id === id ? { ...a, status: 'error' as const, errorMessage: errMsg } : a
-              )
+              ),
             }));
             const ns = get().notificationSettings;
             if (ns.notifyErrors) {
               get().notify(
-                NotificationTemplates.accountError(acc.login, errMsg),
-                DiscordTemplates.accountError(acc.login, errMsg)
+                NotificationTemplates.accountError(acc.login, errMsg as string),
+                DiscordTemplates.accountError(acc.login, errMsg as string)
               );
             }
           }
@@ -364,7 +428,7 @@ export const useAppStore = create<AppStore>()(
           set(state => ({
             accounts: state.accounts.map(a =>
               a.id === id ? { ...a, status: 'error' as const, errorMessage: 'Сервер недоступен' } : a
-            )
+            ),
           }));
         }
       },
@@ -374,12 +438,14 @@ export const useAppStore = create<AppStore>()(
         set(state => ({
           accounts: state.accounts.map(a =>
             a.id === id ? { ...a, status: 'offline' as const } : a
-          )
+          ),
         }));
       },
 
       connectAll: async () => {
-        const accounts = get().getVisibleAccounts().filter(a => a.status === 'offline' || a.status === 'error');
+        const accounts = get()
+          .getVisibleAccounts()
+          .filter(a => a.status === 'offline' || a.status === 'error');
         for (const acc of accounts) {
           await get().connectAccount(acc.id);
           await new Promise(r => setTimeout(r, 2000));
@@ -387,7 +453,9 @@ export const useAppStore = create<AppStore>()(
       },
 
       disconnectAll: async () => {
-        const accounts = get().getVisibleAccounts().filter(a => a.status !== 'offline');
+        const accounts = get()
+          .getVisibleAccounts()
+          .filter(a => a.status !== 'offline');
         for (const acc of accounts) {
           await get().disconnectAccount(acc.id);
         }
@@ -398,21 +466,21 @@ export const useAppStore = create<AppStore>()(
           const statuses = await steamApi.getAllStatuses();
           set(state => ({
             accounts: state.accounts.map(a => {
-              const status = statuses[a.id];
+              const status = statuses[a.id] as Record<string, unknown> | undefined;
               if (status) {
                 return {
                   ...a,
                   status: status.status as SteamAccount['status'],
-                  steamId: status.steamId || a.steamId,
-                  friendsCount: status.friendsCount ?? a.friendsCount,
-                  level: status.level ?? a.level,
-                  balance: status.balance ?? a.balance,
-                  inventoryValue: status.inventoryValue ?? a.inventoryValue,
-                  avatarUrl: status.avatarUrl || a.avatarUrl,
-                  displayName: status.displayName || a.displayName,
-                  tradeBan: status.tradeBan ?? a.tradeBan,
-                  vacBan: status.vacBan ?? a.vacBan,
-                  limited: status.limited ?? a.limited
+                  steamId: (status.steamId as string) || a.steamId,
+                  friendsCount: (status.friendsCount as number) ?? a.friendsCount,
+                  level: (status.level as number) ?? a.level,
+                  balance: (status.balance as number) ?? a.balance,
+                  inventoryValue: (status.inventoryValue as number) ?? a.inventoryValue,
+                  avatarUrl: (status.avatarUrl as string) || a.avatarUrl,
+                  displayName: (status.displayName as string) || a.displayName,
+                  tradeBan: (status.tradeBan as boolean) ?? a.tradeBan,
+                  vacBan: (status.vacBan as boolean) ?? a.vacBan,
+                  limited: (status.limited as boolean) ?? a.limited,
                 };
               }
               return a;
@@ -468,18 +536,28 @@ export const useAppStore = create<AppStore>()(
           target,
           ssl: false,
           status: 'pending',
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         };
         set(state => ({ domains: [...state.domains, newDomain] }));
-        steamApi.addDomain(domain, target).then(result => {
-          if (result.success) {
-            set(state => ({
-              domains: state.domains.map(d =>
-                d.domain === domain ? { ...d, status: 'active' as const, ssl: true, sslExpiry: result.sslExpiry } : d
-              )
-            }));
-          }
-        }).catch(() => {});
+        steamApi
+          .addDomain(domain, target)
+          .then(result => {
+            if (result.success) {
+              set(state => ({
+                domains: state.domains.map(d =>
+                  d.domain === domain
+                    ? {
+                        ...d,
+                        status: 'active' as const,
+                        ssl: true,
+                        sslExpiry: result.sslExpiry as string | undefined,
+                      }
+                    : d
+                ),
+              }));
+            }
+          })
+          .catch(() => {});
       },
 
       removeDomain: (id) => {
@@ -489,11 +567,13 @@ export const useAppStore = create<AppStore>()(
       },
 
       updateDomain: (id, data) => {
-        set(state => ({ domains: state.domains.map(d => d.id === id ? { ...d, ...data } : d) }));
+        set(state => ({ domains: state.domains.map(d => (d.id === id ? { ...d, ...data } : d)) }));
       },
 
       updateNotificationSettings: (settings) => {
-        set(state => ({ notificationSettings: { ...state.notificationSettings, ...settings } }));
+        set(state => ({
+          notificationSettings: { ...state.notificationSettings, ...settings },
+        }));
       },
 
       notify: async (tgMsg, discordMsg) => {
@@ -502,73 +582,117 @@ export const useAppStore = create<AppStore>()(
       },
 
       setSteamIdsToAdd: (ids) => set({ steamIdsToAdd: ids }),
+      setFriendNetworkSteamIds: (ids) => set({ friendNetworkSteamIds: ids }),
 
       addFriendRequestLog: (log) => {
-        set(state => ({ friendRequestLogs: [...state.friendRequestLogs, log].slice(-1000) }));
+        set(state => ({
+          friendRequestLogs: [...state.friendRequestLogs, log].slice(-1000),
+        }));
       },
 
-      startFriendRequests: async (steamIds: string[], requestsPerAccount: number, delaySeconds: number) => {
+      startFriendRequests: async (steamIds, requestsPerAccount, delaySeconds) => {
         _friendRequestAbort = false;
         set({ friendRequestRunning: true, friendRequestLogs: [] });
-        const accounts = get().getVisibleAccounts().filter(a => a.status === 'online' || a.status === 'in-game');
+        const accounts = get()
+          .getVisibleAccounts()
+          .filter(a => a.status === 'online' || a.status === 'in-game');
+
         if (accounts.length === 0 || steamIds.length === 0) {
           set({ friendRequestRunning: false });
           return;
         }
+
         get().addFriendRequestLog({
-          id: generateId(), accountId: 'system', accountLogin: 'СИСТЕМА',
-          targetSteamId: '', targetName: '', foundVia: '', status: 'sent',
+          id: generateId(),
+          accountId: 'system',
+          accountLogin: 'СИСТЕМА',
+          targetSteamId: '',
+          targetName: '',
+          foundVia: '',
+          status: 'sent',
           timestamp: new Date().toISOString(),
-          error: `Запуск: ${accounts.length} аккаунтов, ${steamIds.length} целей, по ${requestsPerAccount} на аккаунт`
+          error: `Запуск: ${accounts.length} аккаунтов, ${steamIds.length} целей, по ${requestsPerAccount} на аккаунт`,
         });
+
         let steamIdIndex = 0;
+
         for (const acc of accounts) {
           if (_friendRequestAbort) {
             get().addFriendRequestLog({
-              id: generateId(), accountId: 'system', accountLogin: 'СИСТЕМА',
-              targetSteamId: '', targetName: '', foundVia: '', status: 'error',
-              timestamp: new Date().toISOString(), error: 'Остановлено пользователем'
+              id: generateId(),
+              accountId: 'system',
+              accountLogin: 'СИСТЕМА',
+              targetSteamId: '',
+              targetName: '',
+              foundVia: '',
+              status: 'error',
+              timestamp: new Date().toISOString(),
+              error: 'Остановлено пользователем',
             });
             break;
           }
+
           let sentForThisAccount = 0;
-          while (sentForThisAccount < requestsPerAccount && steamIdIndex < steamIds.length && !_friendRequestAbort) {
-            const targetId = steamIds[steamIdIndex];
-            steamIdIndex++;
+          while (sentForThisAccount < requestsPerAccount && steamIdIndex < steamIds.length) {
+            if (_friendRequestAbort) break;
+            const targetId = steamIds[steamIdIndex++];
             try {
               const result = await steamApi.addFriend(acc.id, targetId);
               get().addFriendRequestLog({
-                id: generateId(), accountId: acc.id, accountLogin: acc.login,
-                targetSteamId: targetId, targetName: result.name || targetId,
-                foundVia: 'manual', status: result.success ? 'sent' : 'error',
-                timestamp: new Date().toISOString(), error: result.error
+                id: generateId(),
+                accountId: acc.id,
+                accountLogin: acc.login,
+                targetSteamId: targetId,
+                targetName: targetId,
+                foundVia: 'manual',
+                status: (result.success ? 'sent' : 'error') as 'sent' | 'error',
+                timestamp: new Date().toISOString(),
+                error: result.success ? undefined : (result.error as string),
               });
+              sentForThisAccount++;
             } catch {
               get().addFriendRequestLog({
-                id: generateId(), accountId: acc.id, accountLogin: acc.login,
-                targetSteamId: targetId, targetName: targetId,
-                foundVia: 'manual', status: 'error',
-                timestamp: new Date().toISOString(), error: 'Network error'
+                id: generateId(),
+                accountId: acc.id,
+                accountLogin: acc.login,
+                targetSteamId: targetId,
+                targetName: targetId,
+                foundVia: 'manual',
+                status: 'error',
+                timestamp: new Date().toISOString(),
+                error: 'Ошибка сети',
               });
             }
-            sentForThisAccount++;
             await new Promise(r => setTimeout(r, delaySeconds * 1000));
           }
+
           get().addFriendRequestLog({
-            id: generateId(), accountId: acc.id, accountLogin: acc.login,
-            targetSteamId: '', targetName: '', foundVia: '', status: 'sent',
-            timestamp: new Date().toISOString(), error: `Завершено: ${sentForThisAccount} запросов`
+            id: generateId(),
+            accountId: acc.id,
+            accountLogin: acc.login,
+            targetSteamId: '',
+            targetName: '',
+            foundVia: '',
+            status: 'sent',
+            timestamp: new Date().toISOString(),
+            error: `Завершено: ${sentForThisAccount} запросов`,
           });
           await new Promise(r => setTimeout(r, 1000));
         }
+
         const finalLogs = get().friendRequestLogs;
         const totalSent = finalLogs.filter(l => l.status === 'sent' && l.targetSteamId).length;
         const totalErrors = finalLogs.filter(l => l.status === 'error' && l.targetSteamId).length;
         get().addFriendRequestLog({
-          id: generateId(), accountId: 'system', accountLogin: 'СИСТЕМА',
-          targetSteamId: '', targetName: '', foundVia: '', status: 'sent',
+          id: generateId(),
+          accountId: 'system',
+          accountLogin: 'СИСТЕМА',
+          targetSteamId: '',
+          targetName: '',
+          foundVia: '',
+          status: 'sent',
           timestamp: new Date().toISOString(),
-          error: `Готово! Отправлено: ${totalSent}, Ошибок: ${totalErrors}`
+          error: `Готово! Отправлено: ${totalSent}, Ошибок: ${totalErrors}`,
         });
         set({ friendRequestRunning: false });
       },
@@ -576,6 +700,114 @@ export const useAppStore = create<AppStore>()(
       stopFriendRequests: () => {
         _friendRequestAbort = true;
         set({ friendRequestRunning: false });
+      },
+
+      // ── NEW: Network friend crawler (BFS через друзей друзей) ────────────
+      startFriendNetworkCrawler: async (targetSteamIds, maxDepth) => {
+        _friendCrawlerAbort = false;
+        set({ friendCrawlerRunning: true, friendCrawlerLogs: [] });
+
+        const accounts = get()
+          .getVisibleAccounts()
+          .filter(a => a.status === 'online' || a.status === 'in-game');
+
+        if (accounts.length === 0 || targetSteamIds.length === 0) {
+          set({ friendCrawlerRunning: false });
+          return;
+        }
+
+        const addLog = (msg: string, status: 'sent' | 'error' = 'sent') => {
+          set(state => ({
+            friendCrawlerLogs: [
+              ...state.friendCrawlerLogs,
+              {
+                id: generateId(),
+                accountId: 'system',
+                accountLogin: 'КРАУЛЕР',
+                targetSteamId: '',
+                targetName: '',
+                foundVia: '',
+                status,
+                timestamp: new Date().toISOString(),
+                error: msg,
+              },
+            ].slice(-500),
+          }));
+        };
+
+        addLog(`Запуск кравлера: ${accounts.length} аккаунтов, цели: ${targetSteamIds.join(', ')}, глубина: ${maxDepth}`);
+
+        // BFS queue: sets of steam IDs per level
+        const visited = new Set<string>();
+        let currentLevel = [...targetSteamIds];
+        targetSteamIds.forEach(id => visited.add(id));
+
+        for (let depth = 1; depth <= maxDepth && !_friendCrawlerAbort; depth++) {
+          addLog(`Уровень ${depth}: обрабатываем ${currentLevel.length} профилей`);
+          const nextLevel: string[] = [];
+
+          // Each account tries to add everyone in currentLevel
+          for (const acc of accounts) {
+            if (_friendCrawlerAbort) break;
+            for (const targetId of currentLevel) {
+              if (_friendCrawlerAbort) break;
+              try {
+                const result = await steamApi.addFriend(acc.id, targetId);
+                set(state => ({
+                  friendCrawlerLogs: [
+                    ...state.friendCrawlerLogs,
+                    {
+                      id: generateId(),
+                      accountId: acc.id,
+                      accountLogin: acc.login,
+                      targetSteamId: targetId,
+                      targetName: targetId,
+                      foundVia: `depth-${depth}`,
+                      status: (result.success ? 'sent' : 'error') as 'sent' | 'error',
+                      timestamp: new Date().toISOString(),
+                      error: result.success
+                        ? `Запрос отправлен (глубина ${depth})`
+                        : (result.error as string | undefined),
+                    },
+                  ].slice(-500),
+                }));
+              } catch {
+                /* ignore */
+              }
+              await new Promise(r => setTimeout(r, 2000));
+            }
+          }
+
+          if (depth < maxDepth) {
+            // Fetch friends of friends (use first online account)
+            const refAcc = accounts[0];
+            for (const targetId of currentLevel) {
+              if (_friendCrawlerAbort) break;
+              try {
+                const friends = await steamApi.getFriendsOfFriend(refAcc.id, targetId);
+                for (const f of friends) {
+                  if (!visited.has(f.steamId)) {
+                    visited.add(f.steamId);
+                    nextLevel.push(f.steamId);
+                  }
+                }
+              } catch { /* ignore */ }
+              await new Promise(r => setTimeout(r, 1000));
+            }
+            addLog(`Уровень ${depth + 1}: найдено ${nextLevel.length} новых профилей`);
+          }
+
+          currentLevel = nextLevel;
+          if (currentLevel.length === 0) break;
+        }
+
+        addLog('Краулер завершён!');
+        set({ friendCrawlerRunning: false });
+      },
+
+      stopFriendNetworkCrawler: () => {
+        _friendCrawlerAbort = true;
+        set({ friendCrawlerRunning: false });
       },
 
       setSpammerMessage: (msg) => set({ spammerMessage: msg }),
@@ -590,33 +822,52 @@ export const useAppStore = create<AppStore>()(
           set({ spammerRunning: false });
           return;
         }
-        const accounts = get().getVisibleAccounts().filter(a => a.status === 'online' || a.status === 'in-game');
+        const accounts = get()
+          .getVisibleAccounts()
+          .filter(a => a.status === 'online' || a.status === 'in-game');
+
         const log0: SpammerLog = {
-          id: generateId(), accountLogin: 'СИСТЕМА', friendName: '', friendSteamId: '',
-          status: 'sent', timestamp: new Date().toISOString(),
+          id: generateId(),
+          accountLogin: 'СИСТЕМА',
+          friendName: '',
+          friendSteamId: '',
+          status: 'sent',
+          timestamp: new Date().toISOString(),
           error: `Запуск спамера для ${accounts.length} аккаунтов`,
         };
         set(state => ({ spammerLogs: [...state.spammerLogs, log0] }));
+
         for (const acc of accounts) {
           if (_spammerAbort) break;
           const friends = await steamApi.getFriends(acc.id);
           const existingConversations = new Set(
-            get().messages.filter(m => m.accountId === acc.id).map(m => m.friendId)
+            get()
+              .messages.filter(m => m.accountId === acc.id)
+              .map(m => m.friendId)
           );
           const targetsToSpam = friends.filter(f => !existingConversations.has(f.steamId));
+
           const logAcc: SpammerLog = {
-            id: generateId(), accountLogin: acc.login, friendName: '', friendSteamId: '',
-            status: 'sent', timestamp: new Date().toISOString(),
+            id: generateId(),
+            accountLogin: acc.login,
+            friendName: '',
+            friendSteamId: '',
+            status: 'sent',
+            timestamp: new Date().toISOString(),
             error: `${friends.length} друзей, ${targetsToSpam.length} без переписки`,
           };
           set(state => ({ spammerLogs: [...state.spammerLogs, logAcc] }));
+
           for (const friend of targetsToSpam) {
             if (_spammerAbort) break;
             const success = await steamApi.sendMessage(acc.id, friend.steamId, message);
             const log: SpammerLog = {
-              id: generateId(), accountLogin: acc.login,
-              friendName: friend.name || friend.steamId, friendSteamId: friend.steamId,
-              status: success ? 'sent' : 'error', timestamp: new Date().toISOString(),
+              id: generateId(),
+              accountLogin: acc.login,
+              friendName: friend.name || friend.steamId,
+              friendSteamId: friend.steamId,
+              status: success ? 'sent' : 'error',
+              timestamp: new Date().toISOString(),
               error: success ? undefined : 'Не удалось отправить',
             };
             set(state => ({ spammerLogs: [...state.spammerLogs, log] }));
@@ -624,33 +875,61 @@ export const useAppStore = create<AppStore>()(
           }
           await new Promise(r => setTimeout(r, 2000));
         }
+
         const logEnd: SpammerLog = {
-          id: generateId(), accountLogin: 'СИСТЕМА', friendName: '', friendSteamId: '',
-          status: 'sent', timestamp: new Date().toISOString(), error: 'Спамер завершён',
+          id: generateId(),
+          accountLogin: 'СИСТЕМА',
+          friendName: '',
+          friendSteamId: '',
+          status: 'sent',
+          timestamp: new Date().toISOString(),
+          error: 'Спамер завершён',
         };
-        set(state => ({
-          spammerLogs: [...state.spammerLogs, logEnd],
-          spammerRunning: false
-        }));
+        set(state => ({ spammerLogs: [...state.spammerLogs, logEnd], spammerRunning: false }));
       },
 
       stopSpammer: () => {
         _spammerAbort = true;
         set({ spammerRunning: false });
       },
+
+      setSteamMarketApiKey: (key) => set({ steamMarketApiKey: key }),
+
+      fetchInventoryValues: async () => {
+        const { accounts, steamMarketApiKey } = get();
+        const onlineAccounts = accounts.filter(
+          a => (a.status === 'online' || a.status === 'in-game') && a.steamId
+        );
+        for (const acc of onlineAccounts) {
+          if (!acc.steamId) continue;
+          try {
+            const value = await steamApi.getInventoryValue(acc.steamId, steamMarketApiKey);
+            if (value > 0) {
+              get().updateAccount(acc.id, { inventoryValue: value });
+            }
+          } catch { /* ignore */ }
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      },
     }),
     {
       name: 'sukacombine-storage',
       partialize: (state) => ({
-        accounts: state.accounts.map(a => ({ ...a, status: 'offline' as const, errorMessage: undefined })),
+        accounts: state.accounts.map(a => ({
+          ...a,
+          status: 'offline' as const,
+          errorMessage: undefined,
+        })),
         workers: state.workers,
         users: state.users,
         domains: state.domains,
         notificationSettings: state.notificationSettings,
         steamIdsToAdd: state.steamIdsToAdd,
+        friendNetworkSteamIds: state.friendNetworkSteamIds,
         friendRequestLogs: state.friendRequestLogs.slice(-200),
         spammerMessage: state.spammerMessage,
         spammerDelay: state.spammerDelay,
+        steamMarketApiKey: state.steamMarketApiKey,
       }),
     }
   )

@@ -36,7 +36,11 @@ async function sendDiscord(settings: NotificationSettings, message: string): Pro
   }
 }
 
-export async function sendNotification(settings: NotificationSettings, message: string, discordMsg?: string): Promise<void> {
+export async function sendNotification(
+  settings: NotificationSettings,
+  message: string,
+  discordMsg?: string
+): Promise<void> {
   const promises: Promise<boolean>[] = [];
   if (settings.enableTelegram) {
     promises.push(sendTelegram(settings, message));
@@ -49,15 +53,15 @@ export async function sendNotification(settings: NotificationSettings, message: 
 
 export const NotificationTemplates = {
   accountsLoaded: (count: number) =>
-    `🔄 <b>Загружены аккаунты</b>\nКоличество: <b>${count}</b> шт.`,
+    `🔄 <b>Загружены аккаунты</b>\nКоличество: ${count} шт.`,
   newMessage: (senderName: string, steamId: string, preview: string) =>
     `💬 <b>Новое сообщение</b>\nОт: ${senderName} (${steamId})\nСообщение: ${preview.substring(0, 100)}`,
   accountLogin: (login: string, status: string) =>
-    `🔑 <b>Вход в аккаунт</b>\nЛогин: <b>${login}</b>\nСтатус: ${status === 'online' ? '✅ Успешно' : '❌ Ошибка'}`,
+    `🔑 <b>Вход в аккаунт</b>\nЛогин: ${login}\nСтатус: ${status === 'online' ? '✅ Успешно' : '❌ Ошибка'}`,
   accountError: (login: string, error: string) =>
-    `⚠️ <b>Ошибка аккаунта</b>\nЛогин: <b>${login}</b>\nОшибка: ${error}`,
+    `⚠️ <b>Ошибка аккаунта</b>\nЛогин: ${login}\nОшибка: ${error}`,
   friendRequestSent: (login: string, target: string) =>
-    `👤 <b>Запрос в друзья</b>\nОт: <b>${login}</b>\nКому: ${target}`,
+    `👤 <b>Запрос в друзья</b>\nОт: ${login}\nКому: ${target}`,
 };
 
 export const DiscordTemplates = {

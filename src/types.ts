@@ -233,4 +233,19 @@ export interface ParserJob {
   error?: string;
 }
 
-export type ActiveView = 'dashboard' | 'multichat' | 'browser' | 'offers' | 'spammer' | 'friends' | 'guard' | 'workers' | 'settings' | 'sda' | 'import' | 'domains' | 'notifications' | 'account-manager' | 'parser';
+export type ActiveView =
+  | 'dashboard'
+  | 'multichat'
+  | 'browser'
+  | 'offers'
+  | 'spammer'
+  | 'friends'
+  | 'guard'
+  | 'workers'
+  | 'settings'
+  | 'sda'
+  | 'import'
+  | 'domains'
+  | 'notifications'
+  | 'account-manager'
+  | 'parser';

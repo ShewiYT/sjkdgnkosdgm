@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Wifi, WifiOff, DollarSign, Users, ShieldCheck, AlertTriangle, Package, Star, RefreshCw, Database } from 'lucide-react';
+import {
+  Wifi,
+  WifiOff,
+  DollarSign,
+  Users,
+  ShieldCheck,
+  AlertTriangle,
+  Package,
+  Star,
+  RefreshCw,
+  Database,
+} from 'lucide-react';
 import type { SteamAccount } from '../types';
 import { useAppStore } from '../store';
 
@@ -157,7 +168,7 @@ export default function Dashboard({ accounts }: DashboardProps) {
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-white/50">Исходящих</span>
-              <span className="text-green-400">{outgoingMessages}</span>
+              <span className="text-indigo-400">{outgoingMessages}</span>
             </div>
           </div>
         </div>
@@ -178,6 +189,58 @@ export default function Dashboard({ accounts }: DashboardProps) {
               <span className="text-red-400">{errorRequests}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Accounts table */}
+      <div className="glass-card rounded-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white">Аккаунты ({accounts.length})</h3>
+        </div>
+        <div className="divide-y divide-white/5 max-h-80 overflow-y-auto">
+          {accounts.length === 0 ? (
+            <div className="p-8 text-center text-xs text-white/30">Нет аккаунтов</div>
+          ) : (
+            accounts.map(acc => (
+              <div key={acc.id} className="px-4 py-2.5 flex items-center gap-3">
+                {acc.avatarUrl ? (
+                  <img src={acc.avatarUrl} alt="" className="w-7 h-7 rounded-full" />
+                ) : (
+                  <span className="text-base">{acc.avatar}</span>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-white truncate">{acc.login}</div>
+                  <div className="text-[10px] text-white/30">
+                    {acc.steamId ? acc.steamId : 'No SteamID'} • Lvl {acc.level}
+                  </div>
+                </div>
+                <div className="text-[10px] text-white/40">${(acc.inventoryValue || 0).toFixed(2)}</div>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full ${
+                    acc.status === 'online'
+                      ? 'bg-green-500/20 text-green-400'
+                      : acc.status === 'in-game'
+                      ? 'bg-blue-500/20 text-blue-400'
+                      : acc.status === 'error'
+                      ? 'bg-red-500/20 text-red-400'
+                      : acc.status === 'connecting'
+                      ? 'bg-yellow-500/20 text-yellow-400'
+                      : 'bg-white/5 text-white/30'
+                  }`}
+                >
+                  {acc.status === 'online'
+                    ? 'Онлайн'
+                    : acc.status === 'in-game'
+                    ? 'В игре'
+                    : acc.status === 'error'
+                    ? acc.errorMessage || 'Ошибка'
+                    : acc.status === 'connecting'
+                    ? 'Подключение...'
+                    : 'Оффлайн'}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
