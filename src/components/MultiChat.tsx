@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageCircle, Send, Search, DollarSign, Users as UsersIcon, Languages } from 'lucide-react';
+import { MessageCircle, Send, Search, DollarSign, Users as UsersIcon, Languages, FileText, Plus, X, Trash2 } from 'lucide-react';
 import type { SteamAccount, ChatMessage } from '../types';
 import type { FriendData } from '../api';
 import { steamApi } from '../api';
@@ -35,11 +35,11 @@ interface Conversation {
   lastMessage: string;
   timestamp: string;
   inventoryValue?: number;
+  personaState?: number; // 0=offline, 1=online, 2=busy, 3=away, 4=snooze, 5=looking to trade, 6=looking to play
 }
 
 export default function MultiChat({ accounts, selectedAccount }: MultiChatProps) {
   const { messages, sendMessage, fetchNewMessages } = useAppStore();
-  // Store friends per account: { accountId -> FriendData[] }
   const [friendsByAccount, setFriendsByAccount] = useState<Record<string, FriendData[]>>({});
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [inputText, setInputText] = useState('');
@@ -49,6 +49,46 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
   const [translatingId, setTranslatingId] = useState<string | null>(null);
   const [autoTranslate, setAutoTranslate] = useState(false);
   const [translateLang, setTranslateLang] = useState<'ru' | 'en'>('ru');
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [messageTemplates, setMessageTemplates] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('sukacombine-msg-templates');
+      if (saved) return JSON.parse(saved);
+    } catch { /* ignore */ }
+    return [
+      'Привет! Как дела?',
+      'Готов к обмену?',
+      'Скинь трейд ссылку',
+      'Сколько хочешь за это?',
+      'Давай обменяемся',
+      'Спасибо за трейд!',
+      'Hi! Ready to trade?',
+      'Send me your trade link',
+    ];
+  });
+  const [newTemplateDraft, setNewTemplateDraft] = useState('');
+  const [showAddTemplate, setShowAddTemplate] = useState(false);
+
+  // Persist templates
+  useEffect(() => {
+    localStorage.setItem('sukacombine-msg-templates', JSON.stringify(messageTemplates));
+  }, [messageTemplates]);
+
+  const addTemplate = () => {
+    if (!newTemplateDraft.trim()) return;
+    setMessageTemplates(prev => [...prev, newTemplateDraft.trim()]);
+    setNewTemplateDraft('');
+    setShowAddTemplate(false);
+  };
+
+  const removeTemplate = (index: number) => {
+    setMessageTemplates(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const useTemplate = (text: string) => {
+    setInputText(text);
+    setShowTemplates(false);
+  };
   const [inventoryValues, setInventoryValues] = useState<Record<string, {
     value: number;
     loading: boolean;
@@ -57,17 +97,18 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
     pricedItems?: number;
     unpricedItems?: number;
     pricingComplete?: boolean;
+    source?: string;
+    items?: { name: string; price: number | null }[];
   }>>({});
+  const [showInventoryDetails, setShowInventoryDetails] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const onlineAccounts = accounts.filter(a => a.status === 'online' || a.status === 'in-game');
 
-  // Which accounts to load friends for
   const targetAccounts = selectedAccount
     ? [selectedAccount].filter(a => a.status === 'online' || a.status === 'in-game')
     : onlineAccounts;
 
-  // Load friends for all target accounts
   const loadAllFriends = useCallback(async () => {
     if (targetAccounts.length === 0) return;
     setLoading(true);
@@ -101,37 +142,35 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
     setInventoryValues(prev => ({ ...prev, [steamId]: { value: 0, loading: true } }));
     try {
       const result = await steamApi.getInventoryValue(steamId);
+      const items = (result.items || []).map((item: unknown) => {
+        const i = item as Record<string, unknown>;
+        return { name: (i.name || '') as string, price: (i.price as number) ?? null };
+      });
       setInventoryValues(prev => ({
         ...prev,
         [steamId]: {
-          value: result.totalValue,
-          loading: false,
-          error: result.error,
-          itemCount: result.itemCount,
-          pricedItems: result.pricedItems,
-          unpricedItems: result.unpricedItems,
-          pricingComplete: result.pricingComplete,
+          value: result.totalValue, loading: false, error: result.error,
+          itemCount: result.itemCount, pricedItems: result.pricedItems,
+          unpricedItems: result.unpricedItems, pricingComplete: result.pricingComplete,
+          source: result.source, items,
         },
       }));
-
-      // If pricing is not complete, auto-refresh in 15 seconds
       if (!result.pricingComplete && !result.error) {
         setTimeout(() => {
-          // Re-fetch to get updated prices from background fetcher
           steamApi.getInventoryValue(steamId).then(updated => {
+            const updItems = (updated.items || []).map((item: unknown) => {
+              const i = item as Record<string, unknown>;
+              return { name: (i.name || '') as string, price: (i.price as number) ?? null };
+            });
             setInventoryValues(prev => ({
               ...prev,
               [steamId]: {
-                value: updated.totalValue,
-                loading: false,
-                error: updated.error,
-                itemCount: updated.itemCount,
-                pricedItems: updated.pricedItems,
-                unpricedItems: updated.unpricedItems,
-                pricingComplete: updated.pricingComplete,
+                value: updated.totalValue, loading: false, error: updated.error,
+                itemCount: updated.itemCount, pricedItems: updated.pricedItems,
+                unpricedItems: updated.unpricedItems, pricingComplete: updated.pricingComplete,
+                source: updated.source, items: updItems,
               },
             }));
-            // Keep refreshing if still not complete
             if (!updated.pricingComplete && !updated.error) {
               setTimeout(() => fetchInventoryValue(steamId), 20000);
             }
@@ -145,7 +184,7 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
 
   // Build conversations from ALL target accounts' friends
   const conversations: Conversation[] = [];
-  const seenFriends = new Set<string>(); // deduplicate by friendId+accountId
+  const seenFriends = new Set<string>();
 
   for (const acc of targetAccounts) {
     const accFriends = friendsByAccount[acc.id] || [];
@@ -167,11 +206,11 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
         lastMessage: last?.text || '',
         timestamp: last?.timestamp || '',
         inventoryValue: f.inventoryValue,
+        personaState: f.personaState,
       });
     }
   }
 
-  // Sort: conversations with messages first, then alphabetically
   conversations.sort((a, b) => {
     if (a.timestamp && !b.timestamp) return -1;
     if (!a.timestamp && b.timestamp) return 1;
@@ -192,21 +231,11 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
     if (!inputText.trim() || !selectedConversation) return;
     let text = inputText;
     setInputText('');
-
-    // Auto-translate before sending if enabled
     if (autoTranslate) {
       const translated = await translateText(text, translateLang);
-      if (translated) {
-        text = translated;
-      }
+      if (translated) text = translated;
     }
-
-    await sendMessage(
-      selectedConversation.accountId,
-      selectedConversation.friendId,
-      selectedConversation.friendName,
-      text
-    );
+    await sendMessage(selectedConversation.accountId, selectedConversation.friendId, selectedConversation.friendName, text);
   };
 
   const formatTime = (ts: string) => {
@@ -217,46 +246,48 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
   const selectedInventory = selectedConversation ? inventoryValues[selectedConversation.friendId] : undefined;
   const showingAll = !selectedAccount;
 
+  // Helper: is friend online (personaState > 0 means online in Steam)
+  const isFriendOnline = (personaState?: number) => {
+    return personaState !== undefined && personaState > 0;
+  };
+
   return (
     <div className="flex h-[calc(100vh-52px)]">
       {/* Friends list */}
-      <div className="w-80 border-r border-white/5 flex flex-col shrink-0">
-        <div className="p-3 border-b border-white/5 space-y-2">
+      <div className="w-80 border-r border-white/5 flex flex-col bg-dark-900/30">
+        <div className="p-3 space-y-2 border-b border-white/5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-white">
-              <MessageCircle size={16} />
-              <span className="text-sm font-semibold">Мультичат</span>
+            <div className="flex items-center gap-2 text-white text-sm font-semibold">
+              <MessageCircle size={16} className="text-indigo-400" />
+              Мультичат
             </div>
-            <span className="text-[10px] text-white/30">
+            <div className="text-[10px] text-white/30">
               {showingAll ? `${targetAccounts.length} акк.` : targetAccounts[0]?.login}
-            </span>
+            </div>
           </div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Поиск друзей / аккаунтов..."
-              className="w-full glass-input text-xs text-white pl-9 pr-3 py-2 rounded-xl outline-none"
-            />
+              className="w-full glass-input text-xs text-white pl-9 pr-3 py-2 rounded-xl outline-none" />
           </div>
         </div>
 
-        <div className="px-3 py-1.5 text-[10px] text-white/30 flex justify-between">
-          <span>{filteredConversations.length} друзей</span>
-          {showingAll && <span className="text-indigo-400/60">все аккаунты</span>}
+        <div className="px-3 py-1.5 text-[10px] text-white/20">
+          {filteredConversations.length} друзей
+          {showingAll && <span className="ml-1 text-indigo-400/40">все аккаунты</span>}
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="p-4 text-xs text-white/30 text-center">
+            <div className="p-4 text-center text-xs text-white/30">
               <div className="animate-spin w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full mx-auto mb-2" />
               Загрузка друзей{showingAll ? ` (${targetAccounts.length} акк.)` : ''}...
             </div>
           ) : filteredConversations.length === 0 ? (
-            <div className="p-8 text-center text-white/20">
-              <UsersIcon className="w-8 h-8 mx-auto mb-2 opacity-20" />
-              <div className="text-xs">
+            <div className="p-8 text-center">
+              <UsersIcon size={32} className="mx-auto mb-2 text-white/10" />
+              <div className="text-xs text-white/30">
                 {targetAccounts.length === 0 ? 'Нет онлайн аккаунтов' : 'Нет друзей'}
               </div>
             </div>
@@ -265,36 +296,43 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
               const isSelected =
                 selectedConversation?.friendId === conv.friendId &&
                 selectedConversation?.accountId === conv.accountId;
+              const online = isFriendOnline(conv.personaState);
 
               return (
                 <button
                   key={`${conv.accountId}_${conv.friendId}`}
                   onClick={() => setSelectedConversation(conv)}
-                  className={`w-full px-3 py-2.5 flex items-center gap-2.5 text-left transition-colors ${
-                    isSelected ? 'bg-white/8' : 'hover:bg-white/3'
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 transition-colors ${
+                    isSelected ? 'bg-white/10' : 'hover:bg-white/5'
                   }`}
                 >
-                  {conv.friendAvatarUrl ? (
-                    <img src={conv.friendAvatarUrl} alt="" className="w-8 h-8 rounded-full shrink-0" />
-                  ) : (
-                    <span className="text-lg shrink-0">👤</span>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs text-white truncate">{conv.friendName}</div>
-                    <div className="text-[10px] text-white/30 truncate">
-                      {conv.lastMessage || 'Нет сообщений'}
-                    </div>
-                    {/* Show which account this friend belongs to */}
-                    {showingAll && (
-                      <div className="text-[9px] text-indigo-400/50 truncate">
-                        через {conv.accountLogin}
+                  {/* Avatar with online status indicator */}
+                  <div className="relative shrink-0">
+                    {conv.friendAvatarUrl ? (
+                      <img src={conv.friendAvatarUrl} alt="" className="w-9 h-9 rounded-full" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-sm">
+                        👤
                       </div>
                     )}
+                    {/* Online/Offline indicator */}
+                    <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-dark-900 ${
+                      online ? 'bg-green-400' : 'bg-gray-500'
+                    }`} />
+                  </div>
+
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-white truncate">{conv.friendName}</span>
+                    </div>
+                    <div className="text-[10px] text-white/30 truncate">
+                      {conv.lastMessage || `через ${conv.accountLogin}`}
+                    </div>
                   </div>
                   {conv.timestamp && (
-                    <span className="text-[9px] text-white/20 shrink-0">
+                    <div className="text-[9px] text-white/20 shrink-0">
                       {formatTime(conv.timestamp)}
-                    </span>
+                    </div>
                   )}
                 </button>
               );
@@ -304,60 +342,112 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
       </div>
 
       {/* Chat area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col bg-dark-800/30">
         {selectedConversation ? (
           <>
-            <div className="px-4 py-3 border-b border-white/5 flex items-center gap-3">
-              {selectedConversation.friendAvatarUrl ? (
-                <img src={selectedConversation.friendAvatarUrl} alt="" className="w-8 h-8 rounded-full" />
-              ) : (
-                <span className="text-xl">👤</span>
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="text-sm text-white font-medium">{selectedConversation.friendName}</div>
-                <div className="text-[10px] text-white/30 truncate">
+            {/* Chat header */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
+              {/* Header avatar with status */}
+              <div className="relative shrink-0">
+                {selectedConversation.friendAvatarUrl ? (
+                  <img src={selectedConversation.friendAvatarUrl} alt="" className="w-10 h-10 rounded-full" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-lg">👤</div>
+                )}
+                <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-dark-800 ${
+                  isFriendOnline(selectedConversation.personaState) ? 'bg-green-400' : 'bg-gray-500'
+                }`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-white">{selectedConversation.friendName}</div>
+                <div className="text-[10px] text-white/30">
                   через {selectedConversation.accountLogin} • {selectedConversation.friendId}
+                  {isFriendOnline(selectedConversation.personaState)
+                    ? <span className="ml-1 text-green-400">● В сети</span>
+                    : <span className="ml-1 text-gray-500">● Не в сети</span>
+                  }
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2">
                 {selectedInventory ? (
                   selectedInventory.loading ? (
-                    <span className="text-xs text-white/40 flex items-center gap-1">
-                      <div className="animate-spin w-3 h-3 border border-indigo-500/30 border-t-indigo-500 rounded-full" />
-                      Загрузка...
-                    </span>
+                    <div className="flex items-center gap-1 text-xs text-white/30">
+                      <div className="animate-spin w-3 h-3 border border-white/20 border-t-white/60 rounded-full" />
+                      Оценка через Buff163...
+                    </div>
                   ) : selectedInventory.error ? (
-                    <span className="text-xs text-red-400/80" title={selectedInventory.error}>
+                    <div className="text-[10px] text-red-400/60">
                       ❌ {selectedInventory.error}
-                    </span>
+                    </div>
                   ) : (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-green-400 flex items-center gap-1 font-medium">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowInventoryDetails(!showInventoryDetails)}
+                        className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 transition-colors cursor-pointer"
+                        title="Нажмите для деталей"
+                      >
                         <DollarSign size={12} />
                         ${selectedInventory.value.toFixed(2)}
-                      </span>
-                      <span className="text-[10px] text-white/20">
+                      </button>
+                      <span className="text-[10px] text-white/30">
                         {selectedInventory.itemCount} шт
                       </span>
+                      {selectedInventory.pricedItems !== undefined && selectedInventory.unpricedItems !== undefined && (
+                        <span className="text-[10px] text-white/20">
+                          ({selectedInventory.pricedItems}✓ {selectedInventory.unpricedItems}✗)
+                        </span>
+                      )}
+                      {selectedInventory.source && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400/70">
+                          {selectedInventory.source === 'buff163' ? 'Buff163' : 'Steam'}
+                        </span>
+                      )}
                       {!selectedInventory.pricingComplete && (
-                        <span className="text-[10px] text-yellow-400/70 flex items-center gap-1">
-                          <div className="animate-spin w-2.5 h-2.5 border border-yellow-500/30 border-t-yellow-500 rounded-full" />
-                          {selectedInventory.pricedItems}/{(selectedInventory.pricedItems || 0) + (selectedInventory.unpricedItems || 0)}
+                        <span className="flex items-center gap-1 text-[10px] text-yellow-400/60">
+                          <div className="animate-spin w-2.5 h-2.5 border border-yellow-400/30 border-t-yellow-400 rounded-full" />
                         </span>
                       )}
                     </div>
                   )
                 ) : null}
-                <button
-                  onClick={() => fetchInventoryValue(selectedConversation.friendId)}
-                  className="text-[10px] text-white/30 hover:text-white/50 px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-                >
-                  💰 {selectedInventory && !selectedInventory.loading ? 'Обновить' : 'Инвентарь'}
+                <button onClick={() => fetchInventoryValue(selectedConversation.friendId)}
+                  className="p-1.5 rounded-lg bg-white/5 text-white/40 hover:text-white/60 text-xs"
+                  title="Оценить инвентарь (Buff163)">
+                  💰
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {/* Inventory details panel */}
+            {showInventoryDetails && selectedInventory && !selectedInventory.loading && !selectedInventory.error && selectedInventory.items && selectedInventory.items.length > 0 && (
+              <div className="border-b border-white/5 bg-dark-900/60 backdrop-blur-xl max-h-52 overflow-y-auto">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 sticky top-0 bg-dark-900/90 backdrop-blur-xl z-10">
+                  <span className="text-[10px] font-semibold text-white/50">
+                    📦 Инвентарь — Buff163 цены ({selectedInventory.items.length} уник. предметов)
+                  </span>
+                  <button onClick={() => setShowInventoryDetails(false)} className="p-0.5 text-white/30 hover:text-white/60">
+                    <X size={12} />
+                  </button>
+                </div>
+                <div className="divide-y divide-white/3">
+                  {selectedInventory.items
+                    .filter(item => item.name)
+                    .map((item, i) => (
+                    <div key={i} className="flex items-center justify-between px-4 py-1.5">
+                      <span className="text-[11px] text-white/60 truncate flex-1 min-w-0 mr-3">{item.name}</span>
+                      {item.price !== null && item.price > 0 ? (
+                        <span className="text-[11px] text-green-400 font-mono shrink-0">${item.price.toFixed(2)}</span>
+                      ) : (
+                        <span className="text-[10px] text-white/20 shrink-0">—</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {conversationMessages.length === 0 ? (
                 <div className="text-center text-xs text-white/20 py-8">Нет сообщений. Начните диалог!</div>
               ) : (
@@ -377,26 +467,22 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
 
                   return (
                     <div key={msg.id} className={`flex gap-2 ${msg.isOutgoing ? 'justify-end' : 'justify-start'}`}>
-                      {!msg.isOutgoing && <span className="text-sm shrink-0">👤</span>}
-                      <div className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm ${
-                        msg.isOutgoing ? 'bg-indigo-500/20 text-indigo-200' : 'bg-white/5 text-white/80'
-                      }`}>
-                        <div>{msg.text}</div>
+                      {!msg.isOutgoing && <span className="text-lg mt-1">👤</span>}
+                      <div className={`max-w-[70%] rounded-2xl px-3 py-2 ${msg.isOutgoing ? 'bg-indigo-500/20 text-white' : 'bg-white/5 text-white'}`}>
+                        <div className="text-sm break-words">{msg.text}</div>
                         {tr && (
-                          <div className="mt-1 pt-1 border-t border-white/10 text-xs text-blue-300/70 italic">
+                          <div className="text-xs text-indigo-300/60 mt-1 pt-1 border-t border-white/5">
                             🌐 {tr}
                           </div>
                         )}
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-1 mt-1">
                           <span className="text-[9px] text-white/20">{formatTime(msg.timestamp)}</span>
-                          <button
-                            onClick={handleTranslate}
-                            disabled={isTranslating}
-                            className="text-[9px] text-white/20 hover:text-blue-400/60 transition-colors disabled:opacity-50"
-                            title={/[а-яА-ЯёЁ]/.test(msg.text) ? 'Перевести на English' : 'Перевести на Русский'}
-                          >
-                            {isTranslating ? '...' : '🌐'}
-                          </button>
+                          {!msg.isOutgoing && (
+                            <button onClick={handleTranslate} disabled={isTranslating}
+                              className="text-[9px] text-white/20 hover:text-white/40 ml-1">
+                              {isTranslating ? '⏳' : '🌐'}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -406,49 +492,105 @@ export default function MultiChat({ accounts, selectedAccount }: MultiChatProps)
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="p-3 border-t border-white/5 space-y-2">
-              {/* Translate toggle */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setAutoTranslate(!autoTranslate)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] transition-colors ${
-                    autoTranslate ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-white/30 hover:text-white/50'
-                  }`}
-                >
-                  <Languages size={11} />
-                  Авто-перевод
+            {/* Templates popup */}
+            {showTemplates && (
+              <div className="border-t border-white/5 bg-dark-900/80 backdrop-blur-xl">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
+                  <span className="text-xs font-semibold text-white/60 flex items-center gap-1.5">
+                    <FileText size={12} className="text-indigo-400" />
+                    Шаблоны сообщений
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setShowAddTemplate(!showAddTemplate)}
+                      className="p-1 rounded-md text-white/30 hover:text-white/60 hover:bg-white/5">
+                      <Plus size={14} />
+                    </button>
+                    <button onClick={() => setShowTemplates(false)}
+                      className="p-1 rounded-md text-white/30 hover:text-white/60 hover:bg-white/5">
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+                {showAddTemplate && (
+                  <div className="flex items-center gap-2 px-4 py-2 border-b border-white/5">
+                    <input
+                      value={newTemplateDraft}
+                      onChange={e => setNewTemplateDraft(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addTemplate()}
+                      placeholder="Новый шаблон..."
+                      className="flex-1 glass-input text-xs text-white px-3 py-1.5 rounded-lg outline-none"
+                      autoFocus
+                    />
+                    <button onClick={addTemplate} disabled={!newTemplateDraft.trim()}
+                      className="px-3 py-1.5 rounded-lg bg-green-500/20 text-green-400 text-xs hover:bg-green-500/30 disabled:opacity-30">
+                      Добавить
+                    </button>
+                  </div>
+                )}
+                <div className="max-h-48 overflow-y-auto p-2 space-y-1">
+                  {messageTemplates.length === 0 ? (
+                    <div className="text-center text-xs text-white/20 py-4">
+                      Нет шаблонов. Нажмите + чтобы добавить.
+                    </div>
+                  ) : (
+                    messageTemplates.map((tpl, i) => (
+                      <div key={i} className="group flex items-center gap-1">
+                        <button
+                          onClick={() => useTemplate(tpl)}
+                          className="flex-1 text-left px-3 py-2 rounded-lg text-xs text-white/70 hover:bg-white/10 hover:text-white transition-colors truncate"
+                        >
+                          {tpl}
+                        </button>
+                        <button
+                          onClick={() => removeTemplate(i)}
+                          className="p-1 rounded-md text-white/0 group-hover:text-red-400/60 hover:!text-red-400 hover:bg-red-500/10 transition-all shrink-0"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Input */}
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-white/5">
+              <div className="flex items-center gap-1">
+                <button onClick={() => setAutoTranslate(!autoTranslate)}
+                  className={`p-2 rounded-lg text-xs ${autoTranslate ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 text-white/30'}`}>
+                  <Languages size={16} />
                 </button>
                 {autoTranslate && (
-                  <select
-                    value={translateLang}
-                    onChange={e => setTranslateLang(e.target.value as 'ru' | 'en')}
-                    className="bg-white/5 text-white/60 text-[10px] px-2 py-1 rounded-lg border border-white/10 outline-none"
-                  >
-                    <option value="en" className="bg-gray-900">Отправлять на English</option>
-                    <option value="ru" className="bg-gray-900">Отправлять на Русский</option>
+                  <select value={translateLang} onChange={e => setTranslateLang(e.target.value as 'ru' | 'en')}
+                    className="glass-input text-xs text-white px-2 py-1.5 rounded-lg outline-none bg-transparent">
+                    <option value="ru" className="bg-gray-900">→ RU</option>
+                    <option value="en" className="bg-gray-900">→ EN</option>
                   </select>
                 )}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  value={inputText}
-                  onChange={e => setInputText(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                  placeholder={autoTranslate ? `Введите текст (авто-перевод → ${translateLang === 'en' ? 'EN' : 'RU'})...` : 'Введите сообщение...'}
-                  className="flex-1 glass-input text-sm text-white px-4 py-3 rounded-xl outline-none"
-                />
-                <button onClick={handleSendMessage} className="glass-btn px-4 py-3 rounded-xl">
-                  <Send size={16} />
+                <button onClick={() => setShowTemplates(!showTemplates)}
+                  className={`p-2 rounded-lg text-xs ${showTemplates ? 'bg-purple-500/20 text-purple-400' : 'bg-white/5 text-white/30 hover:text-white/50'}`}
+                  title="Шаблоны сообщений"
+                >
+                  <FileText size={16} />
                 </button>
               </div>
+              <input value={inputText} onChange={e => setInputText(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
+                placeholder={autoTranslate ? `Введите текст (авто-перевод → ${translateLang === 'en' ? 'EN' : 'RU'})...` : 'Введите сообщение...'}
+                className="flex-1 glass-input text-sm text-white px-4 py-3 rounded-xl outline-none" />
+              <button onClick={handleSendMessage} disabled={!inputText.trim()}
+                className="p-3 rounded-xl bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 disabled:opacity-30">
+                <Send size={16} />
+              </button>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-center">
-            <div>
-              <MessageCircle size={48} className="mx-auto mb-3 text-white/10" />
-              <div className="text-white/30">Выберите диалог</div>
-              <div className="text-xs text-white/15 mt-1">
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <MessageCircle size={48} className="mx-auto mb-4 text-white/10" />
+              <div className="text-lg text-white/30">Выберите диалог</div>
+              <div className="text-sm text-white/20 mt-1">
                 {conversations.length > 0
                   ? 'Выберите друга слева для начала переписки'
                   : targetAccounts.length === 0

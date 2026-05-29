@@ -17,6 +17,7 @@ import LoginPage from './components/LoginPage';
 import DomainsView from './components/DomainsView';
 import NotificationsView from './components/NotificationsView';
 import SteamParser from './components/SteamParser';
+import AdminPanel from './components/AdminPanel';
 import { useAppStore } from './store';
 import type { ActiveView, SteamAccount } from './types';
 
@@ -101,6 +102,8 @@ export default function App() {
         ) : (
           <div className="p-6 text-white/30">Нет доступа</div>
         );
+      case 'admin':
+        return isAdmin ? <AdminPanel /> : <div className="p-6 text-white/30">Нет доступа</div>;
       case 'settings':
         return <SettingsView accounts={accounts} />;
       default:
@@ -109,7 +112,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-dark-900">
+    <div className="flex h-screen bg-dark-900 text-white overflow-hidden">
       <Sidebar
         activeView={activeView}
         setActiveView={setActiveView}
@@ -127,7 +130,9 @@ export default function App() {
           onConnectAll={handleConnectAll}
           onlineCount={onlineCount}
         />
-        {renderView()}
+        <div className="flex-1 overflow-hidden">
+          {renderView()}
+        </div>
       </div>
     </div>
   );

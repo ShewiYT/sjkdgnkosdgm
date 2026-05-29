@@ -50,13 +50,18 @@ export const steamApi = {
     login: string,
     password: string,
     sharedSecret?: string,
-    identitySecret?: string
+    identitySecret?: string,
+    proxyUrl?: string
   ): Promise<LoginResponse> {
     try {
+      const body: Record<string, unknown> = { accountId, login, password, sharedSecret, identitySecret };
+      if (proxyUrl) {
+        body.proxyUrl = proxyUrl;
+      }
       const res = await fetch(`${API_BASE}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId, login, password, sharedSecret, identitySecret }),
+        body: JSON.stringify(body),
       });
       return await res.json();
     } catch {
@@ -83,7 +88,7 @@ export const steamApi = {
     }
   },
 
-  async getAllStatuses(): Promise<Record<string, Record<string, unknown>>> {
+  async getAllStatuses(): Promise<Record<string, unknown>> {
     try {
       const res = await fetch(`${API_BASE}/status-all`);
       return await res.json();
@@ -219,21 +224,39 @@ export const steamApi = {
     pricedItems: number;
     unpricedItems: number;
     pricingComplete: boolean;
-    items: { name: string; price: number; count: number }[];
+    items: unknown[];
     error?: string;
+    source?: string;
   }> {
+    // Use server-side Buff163 pricing
     try {
-      const res = await fetch(`/api/inventory/${steamId}`);
-      if (!res.ok) return { totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, pricingComplete: true, items: [], error: `HTTP ${res.status}` };
+      const res = await fetch(`/api/buff163/inventory/${steamId}`);
+      if (!res.ok) {
+        // Fallback to regular inventory endpoint
+        const fallback = await fetch(`/api/inventory/${steamId}`);
+        if (!fallback.ok) return { totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, pricingComplete: true, items: [], error: `HTTP ${fallback.status}` };
+        const data = await fallback.json();
+        return {
+          totalValue: data.totalValue || 0,
+          itemCount: data.itemCount || 0,
+          pricedItems: data.pricedItems || 0,
+          unpricedItems: data.unpricedItems || 0,
+          pricingComplete: data.pricingComplete ?? true,
+          items: data.items || [],
+          error: data.error || undefined,
+          source: 'steam',
+        };
+      }
       const data = await res.json();
       return {
         totalValue: data.totalValue || 0,
         itemCount: data.itemCount || 0,
         pricedItems: data.pricedItems || 0,
         unpricedItems: data.unpricedItems || 0,
-        pricingComplete: data.pricingComplete ?? true,
+        pricingComplete: true,
         items: data.items || [],
         error: data.error || undefined,
+        source: data.source || 'buff163',
       };
     } catch {
       return { totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, pricingComplete: true, items: [], error: 'Сервер недоступен' };

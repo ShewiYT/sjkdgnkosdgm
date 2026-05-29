@@ -2,7 +2,7 @@ import {
   LayoutDashboard, MessageCircle, Globe, ArrowRightLeft,
   Megaphone, Users, Shield, Bell, Globe2, Settings,
   LogOut, ChevronLeft, ChevronRight, Upload, UserCog,
-  Key, Search,
+  Key, Search, Wrench,
 } from 'lucide-react';
 import type { ActiveView } from '../types';
 
@@ -31,6 +31,7 @@ const menuItems: { view: ActiveView; icon: React.ReactNode; label: string; admin
   { view: 'notifications', icon: <Bell size={18} />, label: 'Уведомления' },
   { view: 'domains', icon: <Globe2 size={18} />, label: 'Домены', adminOnly: true },
   { view: 'workers', icon: <Users size={18} />, label: 'Работники', adminOnly: true },
+  { view: 'admin', icon: <Wrench size={18} />, label: 'Админ-панель', adminOnly: true },
   { view: 'settings', icon: <Settings size={18} />, label: 'Настройки' },
 ];
 

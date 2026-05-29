@@ -248,4 +248,5 @@ export type ActiveView =
   | 'domains'
   | 'notifications'
   | 'account-manager'
-  | 'parser';
+  | 'parser'
+  | 'admin';
