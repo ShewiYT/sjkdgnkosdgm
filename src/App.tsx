@@ -23,15 +23,9 @@ import type { ActiveView, SteamAccount } from './types';
 
 export default function App() {
   const {
-    currentUser,
-    logout,
-    getVisibleAccounts,
-    tradeOffers,
-    connectAll,
-    disconnectAll,
-    refreshStatuses,
-    loadAccountsFromServer,
-    checkServerConnection,
+    currentUser, logout, getVisibleAccounts, tradeOffers,
+    connectAll, disconnectAll, refreshStatuses,
+    loadAccountsFromServer, checkServerConnection,
   } = useAppStore();
 
   const [activeView, setActiveView] = useState<ActiveView>('import');
@@ -45,9 +39,7 @@ export default function App() {
     loadAccountsFromServer();
     checkServerConnection();
     refreshStatuses();
-    const interval = setInterval(() => {
-      refreshStatuses();
-    }, 10000);
+    const interval = setInterval(() => { refreshStatuses(); }, 10000);
     return () => clearInterval(interval);
   }, [currentUser, refreshStatuses, loadAccountsFromServer, checkServerConnection]);
 
@@ -70,44 +62,27 @@ export default function App() {
 
   const renderView = () => {
     switch (activeView) {
-      case 'import':
-        return <ImportAccounts />;
-      case 'dashboard':
-        return <Dashboard accounts={accounts} />;
-      case 'multichat':
-        return <MultiChat accounts={accounts} selectedAccount={selectedAccount} />;
-      case 'browser':
-        return <BrowserView accounts={accounts} selectedAccount={selectedAccount} />;
-      case 'offers':
-        return <Offers accounts={accounts} offers={tradeOffers} />;
-      case 'spammer':
-        return <Spammer accounts={accounts} />;
-      case 'friends':
-        return <FriendsManager accounts={accounts} />;
-      case 'parser':
-        return <SteamParser />;
-      case 'account-manager':
-        return <AccountManager accounts={accounts} selectedAccount={selectedAccount} />;
-      case 'sda':
-        return <SDAGuard accounts={accounts} />;
-      case 'guard':
-        return <SecurityView accounts={accounts} />;
-      case 'notifications':
-        return <NotificationsView />;
-      case 'domains':
-        return isAdmin ? <DomainsView /> : <div className="p-6 text-white/30">Нет доступа</div>;
-      case 'workers':
-        return isAdmin ? (
-          <Workers accounts={accounts} />
-        ) : (
-          <div className="p-6 text-white/30">Нет доступа</div>
-        );
-      case 'admin':
-        return isAdmin ? <AdminPanel /> : <div className="p-6 text-white/30">Нет доступа</div>;
-      case 'settings':
-        return <SettingsView accounts={accounts} />;
-      default:
-        return <Dashboard accounts={accounts} />;
+      case 'import': return <ImportAccounts />;
+      case 'dashboard': return <Dashboard accounts={accounts} />;
+      case 'multichat': return <MultiChat accounts={accounts} selectedAccount={selectedAccount} />;
+      case 'browser': return <BrowserView accounts={accounts} selectedAccount={selectedAccount} />;
+      case 'offers': return <Offers accounts={accounts} offers={tradeOffers} />;
+      case 'spammer': return <Spammer accounts={accounts} />;
+      case 'friends': return <FriendsManager accounts={accounts} />;
+      case 'parser': return <SteamParser />;
+      case 'account-manager': return <AccountManager accounts={accounts} selectedAccount={selectedAccount} />;
+      case 'sda': return <SDAGuard accounts={accounts} />;
+      case 'guard': return <SecurityView accounts={accounts} />;
+      case 'notifications': return <NotificationsView />;
+      case 'domains': return isAdmin ? <DomainsView /> : <div className="p-6 text-white/30">Нет доступа</div>;
+      case 'workers': return isAdmin ? (
+        <Workers accounts={accounts} />
+      ) : (
+        <div className="p-6 text-white/30">Нет доступа</div>
+      );
+      case 'admin': return isAdmin ? <AdminPanel /> : <div className="p-6 text-white/30">Нет доступа</div>;
+      case 'settings': return <SettingsView />;
+      default: return <Dashboard accounts={accounts} />;
     }
   };
 
@@ -130,9 +105,7 @@ export default function App() {
           onConnectAll={handleConnectAll}
           onlineCount={onlineCount}
         />
-        <div className="flex-1 overflow-hidden">
-          {renderView()}
-        </div>
+        {renderView()}
       </div>
     </div>
   );

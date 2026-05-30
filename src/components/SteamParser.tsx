@@ -23,9 +23,7 @@ export default function SteamParser() {
     return () => clearInterval(interval);
   }, [activeJob]);
 
-  useEffect(() => {
-    parserApi.getActiveJobs().then(jobs => { if (jobs.length > 0) setActiveJob(jobs[0]); });
-  }, []);
+  useEffect(() => { parserApi.getActiveJobs().then(jobs => { if (jobs.length > 0) setActiveJob(jobs[0]); }); }, []);
 
   const handleStart = async () => {
     setLoading(true);
@@ -97,6 +95,7 @@ export default function SteamParser() {
               </div>
             </>
           )}
+          {!activeJob && <div className="glass-card rounded-2xl p-12 text-center"><Search size={48} className="mx-auto mb-4 text-white/10" /><div className="text-sm text-white/30">Запустите парсер</div></div>}
         </div>
       </div>
     </div>

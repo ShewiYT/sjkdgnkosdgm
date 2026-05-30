@@ -218,48 +218,93 @@ export const steamApi = {
     }
   },
 
-  async getInventoryValue(steamId: string): Promise<{
+  async getInventoryValue(steamId: string, game: 'cs2' | 'dota' | 'tf2' | 'rust' = 'cs2'): Promise<{
     totalValue: number;
     itemCount: number;
     pricedItems: number;
     unpricedItems: number;
     pricingComplete: boolean;
-    items: unknown[];
+    items: { name: string; price: number | null }[];
     error?: string;
     source?: string;
   }> {
-    // Use server-side Buff163 pricing
     try {
-      const res = await fetch(`/api/buff163/inventory/${steamId}`);
-      if (!res.ok) {
-        // Fallback to regular inventory endpoint
-        const fallback = await fetch(`/api/inventory/${steamId}`);
-        if (!fallback.ok) return { totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, pricingComplete: true, items: [], error: `HTTP ${fallback.status}` };
-        const data = await fallback.json();
-        return {
-          totalValue: data.totalValue || 0,
-          itemCount: data.itemCount || 0,
-          pricedItems: data.pricedItems || 0,
-          unpricedItems: data.unpricedItems || 0,
-          pricingComplete: data.pricingComplete ?? true,
-          items: data.items || [],
-          error: data.error || undefined,
-          source: 'steam',
-        };
+      // Try Loot.Farm evaluation first (cached prices)
+      const res = await fetch(`/api/inventory/evaluate/${steamId}?game=${game}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.error || data.totalValue > 0) {
+          return {
+            totalValue: data.totalValue || 0,
+            itemCount: data.itemCount || 0,
+            pricedItems: data.pricedItems || 0,
+            unpricedItems: data.unpricedItems || 0,
+            pricingComplete: true,
+            items: data.items || [],
+            error: data.error || undefined,
+            source: data.source || 'Loot.Farm',
+          };
+        }
       }
-      const data = await res.json();
+      
+      // Fallback to legacy inventory endpoint
+      const fallback = await fetch(`/api/inventory/${steamId}`);
+      if (!fallback.ok) {
+        return { totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, pricingComplete: true, items: [], error: `HTTP ${fallback.status}` };
+      }
+      const data = await fallback.json();
       return {
         totalValue: data.totalValue || 0,
         itemCount: data.itemCount || 0,
         pricedItems: data.pricedItems || 0,
         unpricedItems: data.unpricedItems || 0,
-        pricingComplete: true,
+        pricingComplete: data.pricingComplete ?? true,
         items: data.items || [],
         error: data.error || undefined,
-        source: data.source || 'buff163',
+        source: data.priceSource || 'csgotrader',
       };
     } catch {
       return { totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, pricingComplete: true, items: [], error: 'Сервер недоступен' };
+    }
+  },
+
+  // Templates API - server-side storage
+  async getTemplates(): Promise<string[]> {
+    try {
+      const res = await fetch('/api/chat-templates');
+      const data = await res.json();
+      return data.templates || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async saveTemplates(templates: string[]): Promise<boolean> {
+    try {
+      const res = await fetch('/api/chat-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templates }),
+      });
+      const data = await res.json();
+      return data.success || false;
+    } catch {
+      return false;
+    }
+  },
+
+  // Mark messages as read
+  async markMessagesRead(accountId: string, friendId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/messages/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, friendId }),
+      });
+      const data = await res.json();
+      return data.success || false;
+    } catch {
+      return false;
     }
   },
 };

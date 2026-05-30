@@ -49,7 +49,7 @@ export default function Dashboard({ accounts }: DashboardProps) {
           <ServerOff size={20} className="text-red-400 mt-0.5 shrink-0" />
           <div><div className="text-sm font-medium text-red-400">⛔ Сервер не подключен</div>
             <div className="text-xs text-red-300/60 mt-1"><p>Бэкенд сервер (server.js) не запущен или недоступен.</p>
-              <code className="block bg-white/5 px-3 py-2 rounded-lg text-white/60 mt-2">npm install steam-user steam-totp{'\n'}node server.js</code>
+              <code className="block bg-white/5 px-3 py-2 rounded-lg text-white/60 mt-2">{'npm install steam-user steam-totp\nnode server.js'}</code>
             </div>
           </div>
         </div>

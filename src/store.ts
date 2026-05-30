@@ -72,6 +72,10 @@ interface AppStore {
   fetchInventoryValues: () => Promise<void>;
   proxyUrl: string;
   setProxyUrl: (url: string) => void;
+  // Unread messages tracking
+  unreadConversations: Record<string, boolean>; // key = `${accountId}:${friendId}`
+  markConversationRead: (accountId: string, friendId: string) => void;
+  markConversationUnread: (accountId: string, friendId: string) => void;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
@@ -130,6 +134,25 @@ export const useAppStore = create<AppStore>()(
       proxyUrl: '',
       serverConnected: false,
       steamAvailable: false,
+      unreadConversations: {},
+
+      markConversationRead: (accountId, friendId) => {
+        const key = `${accountId}:${friendId}`;
+        set(state => {
+          const newUnread = { ...state.unreadConversations };
+          delete newUnread[key];
+          return { unreadConversations: newUnread };
+        });
+        // Also notify server
+        steamApi.markMessagesRead(accountId, friendId).catch(() => {});
+      },
+
+      markConversationUnread: (accountId, friendId) => {
+        const key = `${accountId}:${friendId}`;
+        set(state => ({
+          unreadConversations: { ...state.unreadConversations, [key]: true },
+        }));
+      },
 
       checkServerConnection: async () => {
         try {
@@ -240,7 +263,11 @@ export const useAppStore = create<AppStore>()(
 
       updateWorker: (id, data) => {
         set(state => ({ workers: state.workers.map(w => (w.id === id ? { ...w, ...data } : w)) }));
-        fetch(`/api/workers/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
+        fetch(`/api/workers/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        }).catch(() => {});
       },
 
       removeWorker: (id) => {
@@ -259,12 +286,14 @@ export const useAppStore = create<AppStore>()(
         const existingLogins = new Set(get().accounts.map(a => a.login.toLowerCase()));
         if (existingLogins.has(login.toLowerCase())) return;
         const newAccount: SteamAccount = {
-          id: generateId(), login, password, maFile,
+          id: generateId(),
+          login, password, maFile,
           avatar: avatarEmojis[Math.floor(Math.random() * avatarEmojis.length)],
           displayName: login, level: 0, status: 'offline', balance: 0,
-          guardEnabled: !!maFile, server: servers[Math.floor(Math.random() * servers.length)],
-          tradeBan: false, vacBan: false, limited: false, friendsCount: 0, inventoryValue: 0,
-          ownerId: currentUser?.id,
+          guardEnabled: !!maFile,
+          server: servers[Math.floor(Math.random() * servers.length)],
+          tradeBan: false, vacBan: false, limited: false,
+          friendsCount: 0, inventoryValue: 0, ownerId: currentUser?.id,
         };
         set(state => ({ accounts: [...state.accounts, newAccount] }));
         get().saveAccountsToServer();
@@ -282,9 +311,10 @@ export const useAppStore = create<AppStore>()(
             id: generateId(), login, password, maFile,
             avatar: avatarEmojis[Math.floor(Math.random() * avatarEmojis.length)],
             displayName: login, level: 0, status: 'offline' as const, balance: 0,
-            guardEnabled: !!maFile, server: servers[Math.floor(Math.random() * servers.length)],
-            tradeBan: false, vacBan: false, limited: false, friendsCount: 0, inventoryValue: 0,
-            ownerId: currentUser?.id,
+            guardEnabled: !!maFile,
+            server: servers[Math.floor(Math.random() * servers.length)],
+            tradeBan: false, vacBan: false, limited: false,
+            friendsCount: 0, inventoryValue: 0, ownerId: currentUser?.id,
           });
         }
         if (newAccounts.length > 0) {
@@ -333,7 +363,9 @@ export const useAppStore = create<AppStore>()(
         await get().checkServerConnection();
         const serverAvailable = get().serverConnected;
         const steamReady = get().steamAvailable;
+
         set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'connecting' as const, errorMessage: undefined } : a) }));
+
         if (!serverAvailable) {
           set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'error' as const, errorMessage: '❌ Сервер недоступен. Запустите: node server.js' } : a) }));
           return;
@@ -371,55 +403,27 @@ export const useAppStore = create<AppStore>()(
         };
 
         try {
-          // 1) First attempt — without proxy (VDS IP)
           const result = await steamApi.login(id, acc.login, acc.password, acc.maFile?.shared_secret, acc.maFile?.identity_secret);
-
           if (result.success || result.status === 'online') {
             handleLoginSuccess(result as Record<string, unknown>, false);
             return;
           }
-
           const errMsg = (result.error || result.message || '') as string;
           const isRateLimit = errMsg.toLowerCase().includes('ratelimit') || errMsg.includes('RateLimitExceeded');
-
-          // 2) If RateLimitExceeded and proxy is set — retry with proxy
           const proxy = get().proxyUrl.trim();
           if (isRateLimit && proxy) {
-            console.log(`[Connect] RateLimit for ${acc.login}, retrying with proxy...`);
             set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, errorMessage: '⏳ RateLimit — повтор через прокси...' } : a) }));
-
-            // Small delay before retry
             await new Promise(r => setTimeout(r, 3000));
-
             const proxyResult = await steamApi.login(id, acc.login, acc.password, acc.maFile?.shared_secret, acc.maFile?.identity_secret, proxy);
-
             if (proxyResult.success || proxyResult.status === 'online') {
               handleLoginSuccess(proxyResult as Record<string, unknown>, true);
               return;
             }
-
-            // Proxy attempt also failed
             const proxyErr = proxyResult.error || proxyResult.message || 'Ошибка подключения через прокси';
             set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'error' as const, errorMessage: `❌ ${proxyErr}` } : a) }));
-            const ns = get().notificationSettings;
-            if (ns.notifyErrors) {
-              get().notify(
-                NotificationTemplates.accountError(acc.login, proxyErr as string),
-                DiscordTemplates.accountError(acc.login, proxyErr as string)
-              );
-            }
             return;
           }
-
-          // Not rate limit or no proxy — show error
           set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'error' as const, errorMessage: errMsg || 'Ошибка подключения' } : a) }));
-          const ns = get().notificationSettings;
-          if (ns.notifyErrors && errMsg) {
-            get().notify(
-              NotificationTemplates.accountError(acc.login, errMsg),
-              DiscordTemplates.accountError(acc.login, errMsg)
-            );
-          }
         } catch {
           set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'error' as const, errorMessage: 'Сервер недоступен' } : a) }));
         }
@@ -430,12 +434,11 @@ export const useAppStore = create<AppStore>()(
         set(state => ({ accounts: state.accounts.map(a => a.id === id ? { ...a, status: 'offline' as const } : a) }));
       },
 
-      // CHANGED: delay between accounts from 2000ms to 10000ms (10 seconds)
       connectAll: async () => {
         const accounts = get().getVisibleAccounts().filter(a => a.status === 'offline' || a.status === 'error');
         for (const acc of accounts) {
           await get().connectAccount(acc.id);
-          await new Promise(r => setTimeout(r, 10000)); // 10 seconds delay
+          await new Promise(r => setTimeout(r, 10000));
         }
       },
 
@@ -470,7 +473,8 @@ export const useAppStore = create<AppStore>()(
               const status = statuses[a.id] as Record<string, unknown> | undefined;
               if (status) {
                 return {
-                  ...a, status: status.status as SteamAccount['status'],
+                  ...a,
+                  status: status.status as SteamAccount['status'],
                   steamId: (status.steamId as string) || a.steamId,
                   friendsCount: (status.friendsCount as number) ?? a.friendsCount,
                   level: (status.level as number) ?? a.level,
@@ -490,17 +494,65 @@ export const useAppStore = create<AppStore>()(
         } catch { /* ignore */ }
       },
 
-      addMessage: (message) => { set(state => ({ messages: [...state.messages, message].slice(-500) })); },
+      addMessage: (message) => {
+        set(state => {
+          // FIX #2: Check for duplicate by ID or by content+timestamp
+          const isDuplicate = state.messages.some(m => {
+            // Check by ID
+            if (m.id === message.id) return true;
+            // Check by content similarity (same account, friend, text, and close timestamp)
+            if (m.accountId === message.accountId && 
+                m.friendId === message.friendId && 
+                m.text === message.text &&
+                m.isOutgoing === message.isOutgoing) {
+              const timeDiff = Math.abs(new Date(m.timestamp).getTime() - new Date(message.timestamp).getTime());
+              // Within 30 seconds = duplicate
+              if (timeDiff < 30000) return true;
+            }
+            return false;
+          });
+          if (isDuplicate) return state;
+          return { messages: [...state.messages, message].slice(-500) };
+        });
+      },
 
       fetchNewMessages: async () => {
         try {
           const newMessages = await steamApi.getMessages();
           if (newMessages.length > 0) {
             set(state => {
-              const existingIds = new Set(state.messages.map(m => m.id));
-              const uniqueNew = newMessages.filter(m => !existingIds.has(m.id));
+              // Check duplicates by ID AND by content+timestamp
+              const uniqueNew = newMessages.filter(newMsg => {
+                return !state.messages.some(existing => {
+                  // Check by ID
+                  if (existing.id === newMsg.id) return true;
+                  // Check by content similarity
+                  if (existing.accountId === newMsg.accountId && 
+                      existing.friendId === newMsg.friendId && 
+                      existing.text === newMsg.text &&
+                      existing.isOutgoing === newMsg.isOutgoing) {
+                    const timeDiff = Math.abs(new Date(existing.timestamp).getTime() - new Date(newMsg.timestamp).getTime());
+                    if (timeDiff < 30000) return true;
+                  }
+                  return false;
+                });
+              });
+
               if (uniqueNew.length === 0) return state;
-              return { messages: [...state.messages, ...uniqueNew].slice(-500) };
+
+              // Mark incoming messages as unread
+              const newUnread = { ...state.unreadConversations };
+              for (const msg of uniqueNew) {
+                if (!msg.isOutgoing) {
+                  const key = `${msg.accountId}:${msg.friendId}`;
+                  newUnread[key] = true;
+                }
+              }
+
+              return {
+                messages: [...state.messages, ...uniqueNew].slice(-500),
+                unreadConversations: newUnread,
+              };
             });
           }
         } catch { /* ignore */ }
@@ -511,11 +563,19 @@ export const useAppStore = create<AppStore>()(
         if (!acc) return false;
         const success = await steamApi.sendMessage(accountId, friendSteamId, text);
         if (success) {
+          const msgId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           const msg: ChatMessage = {
-            id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            accountId, accountLogin: acc.login, friendId: friendSteamId,
-            friendName, friendAvatar: '👤', text, timestamp: new Date().toISOString(), isOutgoing: true,
+            id: msgId,
+            accountId,
+            accountLogin: acc.login,
+            friendId: friendSteamId,
+            friendName,
+            friendAvatar: '👤',
+            text,
+            timestamp: new Date().toISOString(),
+            isOutgoing: true,
           };
+          // FIX #2: Use addMessage which checks for duplicates
           get().addMessage(msg);
         }
         return success;
@@ -538,9 +598,13 @@ export const useAppStore = create<AppStore>()(
         set(state => ({ domains: state.domains.filter(d => d.id !== id) }));
       },
 
-      updateDomain: (id, data) => { set(state => ({ domains: state.domains.map(d => (d.id === id ? { ...d, ...data } : d)) })); },
+      updateDomain: (id, data) => {
+        set(state => ({ domains: state.domains.map(d => (d.id === id ? { ...d, ...data } : d)) }));
+      },
 
-      updateNotificationSettings: (settings) => { set(state => ({ notificationSettings: { ...state.notificationSettings, ...settings } })); },
+      updateNotificationSettings: (settings) => {
+        set(state => ({ notificationSettings: { ...state.notificationSettings, ...settings } }));
+      },
 
       notify: async (tgMsg, discordMsg) => {
         const ns = get().notificationSettings;
@@ -550,25 +614,20 @@ export const useAppStore = create<AppStore>()(
       setSteamIdsToAdd: (ids) => set({ steamIdsToAdd: ids }),
       setFriendNetworkSteamIds: (ids) => set({ friendNetworkSteamIds: ids }),
 
-      addFriendRequestLog: (log) => { set(state => ({ friendRequestLogs: [...state.friendRequestLogs, log].slice(-1000) })); },
+      addFriendRequestLog: (log) => {
+        set(state => ({ friendRequestLogs: [...state.friendRequestLogs, log].slice(-1000) }));
+      },
 
       startFriendRequests: async (steamIds, requestsPerAccount, delaySeconds) => {
         _friendRequestAbort = false;
         set({ friendRequestRunning: true, friendRequestLogs: [] });
         const accounts = get().getVisibleAccounts().filter(a => a.status === 'online' || a.status === 'in-game');
         if (accounts.length === 0 || steamIds.length === 0) { set({ friendRequestRunning: false }); return; }
-        get().addFriendRequestLog({
-          id: generateId(), accountId: 'system', accountLogin: 'СИСТЕМА',
-          targetSteamId: '', targetName: '', foundVia: '', status: 'sent',
-          timestamp: new Date().toISOString(),
-          error: `Запуск: ${accounts.length} аккаунтов, ${steamIds.length} целей, по ${requestsPerAccount} на аккаунт`,
-        });
         let steamIdIndex = 0;
         for (const acc of accounts) {
           if (_friendRequestAbort) break;
           let sentForThisAccount = 0;
-          while (sentForThisAccount < requestsPerAccount && steamIdIndex < steamIds.length) {
-            if (_friendRequestAbort) break;
+          while (sentForThisAccount < requestsPerAccount && steamIdIndex < steamIds.length && !_friendRequestAbort) {
             const targetId = steamIds[steamIdIndex++];
             try {
               const result = await steamApi.addFriend(acc.id, targetId);
@@ -626,8 +685,8 @@ export const useAppStore = create<AppStore>()(
                 }
               } catch { /* ignore */ }
             }
-            await new Promise(r => setTimeout(r, 1000));
           }
+          await new Promise(r => setTimeout(r, 1000));
           currentLevel = nextLevel;
         }
         set({ friendCrawlerRunning: false });
@@ -654,9 +713,10 @@ export const useAppStore = create<AppStore>()(
             if (_spammerAbort) break;
             const success = await steamApi.sendMessage(acc.id, friend.steamId, message);
             const log: SpammerLog = {
-              id: generateId(), accountLogin: acc.login, friendName: friend.name || friend.steamId,
-              friendSteamId: friend.steamId, status: success ? 'sent' : 'error',
-              timestamp: new Date().toISOString(), error: success ? undefined : 'Не удалось отправить',
+              id: generateId(), accountLogin: acc.login,
+              friendName: friend.name || friend.steamId, friendSteamId: friend.steamId,
+              status: success ? 'sent' : 'error', timestamp: new Date().toISOString(),
+              error: success ? undefined : 'Не удалось отправить',
             };
             set(state => ({ spammerLogs: [...state.spammerLogs, log] }));
             await new Promise(r => setTimeout(r, delay * 1000));
@@ -678,7 +738,9 @@ export const useAppStore = create<AppStore>()(
           if (!acc.steamId) continue;
           try {
             const result = await steamApi.getInventoryValue(acc.steamId);
-            if (result.totalValue > 0) { get().updateAccount(acc.id, { inventoryValue: result.totalValue }); }
+            if (result.totalValue > 0) {
+              get().updateAccount(acc.id, { inventoryValue: result.totalValue });
+            }
           } catch { /* ignore */ }
           await new Promise(r => setTimeout(r, 2000));
         }
@@ -699,6 +761,7 @@ export const useAppStore = create<AppStore>()(
         spammerDelay: state.spammerDelay,
         steamMarketApiKey: state.steamMarketApiKey,
         proxyUrl: state.proxyUrl,
+        unreadConversations: state.unreadConversations,
       }),
     }
   )

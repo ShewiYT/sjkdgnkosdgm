@@ -1,6 +1,7 @@
 // ============================================================
-// SukaCombine Server v3.2 — REAL Steam Connection + Worker Nodes + Proxy
+// SukaCombine Server v3.3 — REAL Steam Connection + Worker Nodes + Proxy
 // Uses steam-user + steam-totp for actual Steam login
+// + Loot.Farm cached prices + Server-side chat templates
 // ============================================================
 // INSTALL:
 //   npm install express better-sqlite3 steam-user steam-totp https-proxy-agent socks-proxy-agent
@@ -11,7 +12,7 @@
 import express from 'express';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,17 +22,27 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '50mb' }));
 
+// ============= DIRECTORIES =============
+const DATA_DIR = join(__dirname, 'data');
+const CACHE_DIR = join(DATA_DIR, 'lootfarm-cache');
+
+if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+
 // ============= DATABASE =============
 let dbOps;
+let dbInstance = null;
+
 try {
   const dbModule = await import('./server/database.js');
   dbOps = dbModule.dbOps;
+  dbInstance = dbModule.db || null;
   console.log('[Server] SQLite database loaded successfully');
 } catch (err) {
   console.error('[Server] Failed to load database:', err.message);
   console.log('[Server] Running without database - using in-memory fallback');
 
-  const memStore = { accounts: [], workers: [], messages: [] };
+  const memStore = { accounts: [], workers: [], messages: [], templates: [] };
 
   dbOps = {
     getUserByCredentials: (u, p) => u === 'admin' && p === 'admin123' ? { id: 'admin', username: 'admin', role: 'admin' } : null,
@@ -43,10 +54,50 @@ try {
     saveAccounts: (accs) => { memStore.accounts = accs; },
     deleteAccount: (id) => { memStore.accounts = memStore.accounts.filter(a => a.id !== id); },
     getMessages: () => memStore.messages,
+    getMessagesByChat: (accId, friendId) => memStore.messages.filter(m => m.accountId === accId && m.friendId === friendId),
+    getMessagesByAccount: (accId) => memStore.messages.filter(m => m.accountId === accId),
     saveMessage: (msg) => { memStore.messages.push(msg); },
+    markMessagesAsRead: (accId, friendId) => { memStore.messages.forEach(m => { if (m.accountId === accId && m.friendId === friendId) m.isRead = true; }); },
+    getChats: () => [],
+    getUnreadCount: () => 0,
+    deleteChat: () => {},
     getStats: () => ({ accounts: memStore.accounts.length, workers: memStore.workers.length, messages: memStore.messages.length, parseJobs: 0 }),
     clearAll: () => { memStore.accounts = []; memStore.messages = []; },
+    // Chat templates
+    getChatTemplates: () => memStore.templates,
+    saveChatTemplates: (templates) => { memStore.templates = templates; },
   };
+}
+
+// ============= CHAT TEMPLATES (add to database.js if using SQLite) =============
+// Fallback template storage if not in database
+const TEMPLATES_FILE = join(DATA_DIR, 'chat-templates.json');
+
+function loadTemplatesFromFile() {
+  try {
+    if (existsSync(TEMPLATES_FILE)) {
+      return JSON.parse(readFileSync(TEMPLATES_FILE, 'utf-8'));
+    }
+  } catch {}
+  return [
+    'Привет! Как дела?',
+    'Готов к обмену?',
+    'Скинь трейд ссылку',
+    'Сколько хочешь за это?',
+    'Давай обмениваемся',
+    'Спасибо за трейд!',
+    'Hi! Ready to trade?',
+    'Send me your trade link',
+  ];
+}
+
+function saveTemplatesToFile(templates) {
+  try {
+    writeFileSync(TEMPLATES_FILE, JSON.stringify(templates, null, 2));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ============= PROXY SUPPORT =============
@@ -72,9 +123,6 @@ function parseProxyString(proxyStr) {
   if (!proxyStr || !proxyStr.trim()) return null;
   
   let proxy = proxyStr.trim();
-  
-  // Format: user:pass@host:port or host:port:user:pass or host:port
-  // Convert to URL format
   
   // Already has protocol
   if (proxy.startsWith('http://') || proxy.startsWith('https://') || proxy.startsWith('socks://') || proxy.startsWith('socks5://') || proxy.startsWith('socks4://')) {
@@ -116,6 +164,131 @@ function createProxyAgent(proxyUrl) {
   }
 }
 
+// ============= LOOT.FARM PRICE CACHE =============
+const LOOTFARM_SOURCES = {
+  cs2: { url: 'https://loot.farm/fullprice.json', appId: 730 },
+  dota: { url: 'https://loot.farm/fullpriceDOTA.json', appId: 570 },
+  tf2: { url: 'https://loot.farm/fullpriceTF2.json', appId: 440 },
+  rust: { url: 'https://loot.farm/fullpriceRUST.json', appId: 252490 },
+};
+
+const lootfarmPrices = {
+  cs2: new Map(),
+  dota: new Map(),
+  tf2: new Map(),
+  rust: new Map(),
+};
+
+const lootfarmMeta = {
+  cs2: { lastUpdate: 0, itemCount: 0 },
+  dota: { lastUpdate: 0, itemCount: 0 },
+  tf2: { lastUpdate: 0, itemCount: 0 },
+  rust: { lastUpdate: 0, itemCount: 0 },
+};
+
+const LOOTFARM_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+function getLootfarmCacheFile(game) {
+  return join(CACHE_DIR, `${game}-prices.json`);
+}
+
+function loadLootfarmFromDisk(game) {
+  try {
+    const filePath = getLootfarmCacheFile(game);
+    if (existsSync(filePath)) {
+      const data = JSON.parse(readFileSync(filePath, 'utf-8'));
+      const cache = lootfarmPrices[game];
+      cache.clear();
+      
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          if (item.name && typeof item.price === 'number') {
+            cache.set(item.name, item.price / 100); // cents to dollars
+          }
+        }
+      } else if (typeof data === 'object') {
+        for (const [name, priceData] of Object.entries(data)) {
+          const price = typeof priceData === 'number' ? priceData : priceData?.price;
+          if (typeof price === 'number') {
+            cache.set(name, price / 100);
+          }
+        }
+      }
+      
+      const stats = require('fs').statSync(filePath);
+      lootfarmMeta[game] = { lastUpdate: stats.mtimeMs, itemCount: cache.size };
+      console.log(`[LootFarm] ✅ Loaded ${cache.size} ${game.toUpperCase()} prices from cache`);
+      return true;
+    }
+  } catch (err) {
+    console.error(`[LootFarm] Error loading ${game} cache:`, err.message);
+  }
+  return false;
+}
+
+async function downloadLootfarmPrices(game) {
+  const source = LOOTFARM_SOURCES[game];
+  if (!source) throw new Error(`Unknown game: ${game}`);
+
+  console.log(`[LootFarm] 📥 Downloading ${game.toUpperCase()} prices from ${source.url}...`);
+  
+  const response = await fetch(source.url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    signal: AbortSignal.timeout(60000),
+  });
+
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+  const data = await response.json();
+  writeFileSync(getLootfarmCacheFile(game), JSON.stringify(data));
+  
+  const cache = lootfarmPrices[game];
+  cache.clear();
+  
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      if (item.name && typeof item.price === 'number') {
+        cache.set(item.name, item.price / 100);
+      }
+    }
+  } else if (typeof data === 'object') {
+    for (const [name, priceData] of Object.entries(data)) {
+      const price = typeof priceData === 'number' ? priceData : priceData?.price;
+      if (typeof price === 'number') {
+        cache.set(name, price / 100);
+      }
+    }
+  }
+
+  lootfarmMeta[game] = { lastUpdate: Date.now(), itemCount: cache.size };
+  console.log(`[LootFarm] ✅ Downloaded ${cache.size} ${game.toUpperCase()} prices`);
+  return cache.size;
+}
+
+async function ensureLootfarmPrices(game) {
+  const cache = lootfarmPrices[game];
+  const meta = lootfarmMeta[game];
+  
+  // Fresh cache
+  if (cache.size > 0 && Date.now() - meta.lastUpdate < LOOTFARM_CACHE_TTL) return;
+  
+  // Try disk
+  if (loadLootfarmFromDisk(game) && Date.now() - lootfarmMeta[game].lastUpdate < LOOTFARM_CACHE_TTL) return;
+  
+  // Download
+  try {
+    await downloadLootfarmPrices(game);
+  } catch (err) {
+    console.error(`[LootFarm] Failed to download ${game} prices:`, err.message);
+    if (cache.size === 0) loadLootfarmFromDisk(game);
+  }
+}
+
+// Initialize Loot.Farm caches
+for (const game of Object.keys(LOOTFARM_SOURCES)) {
+  loadLootfarmFromDisk(game);
+}
+
 // ============= PROXY API =============
 app.post('/api/proxy/set', (req, res) => {
   const { proxy } = req.body;
@@ -155,7 +328,6 @@ app.post('/api/proxy/check', async (req, res) => {
       return res.json({ success: false, error: 'Не удалось создать proxy agent' });
     }
     
-    // Test proxy by fetching a simple endpoint
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     
@@ -180,8 +352,189 @@ app.post('/api/proxy/check', async (req, res) => {
   }
 });
 
+// ============= CHAT TEMPLATES API =============
+app.get('/api/chat-templates', (req, res) => {
+  try {
+    // Try database first
+    if (dbOps.getChatTemplates) {
+      const templates = dbOps.getChatTemplates();
+      if (templates && templates.length > 0) {
+        return res.json({ templates });
+      }
+    }
+    // Fallback to file
+    const templates = loadTemplatesFromFile();
+    res.json({ templates });
+  } catch (err) {
+    console.error('[Templates] Error:', err.message);
+    res.json({ templates: [] });
+  }
+});
+
+app.post('/api/chat-templates', (req, res) => {
+  const { templates } = req.body;
+  
+  if (!Array.isArray(templates)) {
+    return res.status(400).json({ error: 'templates must be an array' });
+  }
+  
+  try {
+    // Try database first
+    if (dbOps.saveChatTemplates) {
+      dbOps.saveChatTemplates(templates);
+    }
+    // Also save to file as backup
+    saveTemplatesToFile(templates);
+    
+    console.log(`[Templates] Saved ${templates.length} templates`);
+    res.json({ success: true, count: templates.length });
+  } catch (err) {
+    console.error('[Templates] Save error:', err.message);
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// ============= LOOT.FARM INVENTORY EVALUATION =============
+app.get('/api/inventory/evaluate/:steamId', async (req, res) => {
+  const { steamId } = req.params;
+  const game = (req.query.game || 'cs2').toLowerCase();
+  
+  if (!['cs2', 'dota', 'tf2', 'rust'].includes(game)) {
+    return res.status(400).json({ error: 'Invalid game. Use: cs2, dota, tf2, rust' });
+  }
+  
+  if (!/^\d{17}$/.test(steamId)) {
+    return res.status(400).json({ error: 'Invalid Steam ID' });
+  }
+  
+  try {
+    await ensureLootfarmPrices(game);
+    
+    const cache = lootfarmPrices[game];
+    if (cache.size === 0) {
+      return res.json({ 
+        error: 'Цены не загружены. Попробуйте позже.', 
+        totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, items: [] 
+      });
+    }
+    
+    const source = LOOTFARM_SOURCES[game];
+    const inventoryUrl = `https://steamcommunity.com/inventory/${steamId}/${source.appId}/2?l=english&count=5000`;
+    
+    console.log(`[LootFarm] Fetching inventory for ${steamId} (${game})...`);
+    
+    const response = await fetch(inventoryUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!response.ok) {
+      if (response.status === 403) {
+        return res.json({ error: 'Инвентарь приватный', totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, items: [] });
+      }
+      return res.json({ error: `Steam HTTP ${response.status}`, totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, items: [] });
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      return res.json({ error: 'Steam error', totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, items: [] });
+    }
+
+    const assets = data.assets || [];
+    const descriptions = data.descriptions || [];
+    const descMap = new Map();
+    
+    for (const desc of descriptions) {
+      descMap.set(`${desc.classid}_${desc.instanceid}`, desc);
+    }
+
+    const itemCounts = new Map();
+    for (const asset of assets) {
+      const desc = descMap.get(`${asset.classid}_${asset.instanceid}`);
+      if (desc?.market_hash_name) {
+        const name = desc.market_hash_name;
+        const count = parseInt(asset.amount) || 1;
+        itemCounts.set(name, (itemCounts.get(name) || 0) + count);
+      }
+    }
+
+    let totalValue = 0, pricedItems = 0, unpricedItems = 0;
+    const items = [];
+
+    for (const [name, count] of itemCounts) {
+      const price = cache.get(name);
+      if (price && price > 0) {
+        totalValue += price * count;
+        pricedItems += count;
+        items.push({ name, price: Math.round(price * count * 100) / 100, count });
+      } else {
+        unpricedItems += count;
+        items.push({ name, price: null, count });
+      }
+    }
+
+    items.sort((a, b) => (b.price || 0) - (a.price || 0));
+
+    console.log(`[LootFarm] ✅ ${steamId} (${game}): $${totalValue.toFixed(2)}, ${pricedItems}/${pricedItems + unpricedItems} priced`);
+
+    res.json({
+      totalValue: Math.round(totalValue * 100) / 100,
+      itemCount: pricedItems + unpricedItems,
+      pricedItems,
+      unpricedItems,
+      items: items.slice(0, 100),
+      source: 'Loot.Farm',
+      game,
+      cacheAge: Date.now() - lootfarmMeta[game].lastUpdate,
+    });
+    
+  } catch (err) {
+    console.error('[LootFarm] Inventory evaluation error:', err.message);
+    res.json({ error: err.message, totalValue: 0, itemCount: 0, pricedItems: 0, unpricedItems: 0, items: [] });
+  }
+});
+
+app.get('/api/inventory/cache-status', (req, res) => {
+  const status = {};
+  for (const [game, meta] of Object.entries(lootfarmMeta)) {
+    status[game] = {
+      itemCount: lootfarmPrices[game].size,
+      lastUpdate: meta.lastUpdate ? new Date(meta.lastUpdate).toISOString() : null,
+      ageMinutes: meta.lastUpdate ? Math.round((Date.now() - meta.lastUpdate) / 60000) : null,
+      fresh: meta.lastUpdate ? (Date.now() - meta.lastUpdate < LOOTFARM_CACHE_TTL) : false,
+    };
+  }
+  res.json({ status });
+});
+
+app.post('/api/inventory/refresh-prices', async (req, res) => {
+  const game = (req.query.game || 'all').toLowerCase();
+  
+  try {
+    if (game === 'all') {
+      const results = {};
+      for (const g of Object.keys(LOOTFARM_SOURCES)) {
+        try { 
+          results[g] = { itemCount: await downloadLootfarmPrices(g) }; 
+        } catch (err) { 
+          results[g] = { error: err.message }; 
+        }
+      }
+      return res.json({ success: true, results });
+    }
+    
+    if (!LOOTFARM_SOURCES[game]) {
+      return res.status(400).json({ error: 'Invalid game. Use: cs2, dota, tf2, rust, all' });
+    }
+    
+    const count = await downloadLootfarmPrices(game);
+    res.json({ success: true, game, itemCount: count });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ============= WORKER NODES API =============
-// For distributed worker nodes that run steam-user connections
 const workerNodes = new Map();
 
 app.post('/api/nodes/register', (req, res) => {
@@ -222,7 +575,6 @@ app.post('/api/nodes/heartbeat', (req, res) => {
   
   const node = workerNodes.get(nodeId);
   if (!node) {
-    // Node not registered, tell it to re-register
     return res.status(404).json({ success: false, error: 'Node not registered. Please re-register.' });
   }
   
@@ -242,7 +594,6 @@ app.post('/api/nodes/heartbeat', (req, res) => {
 app.get('/api/nodes', (req, res) => {
   const nodes = Array.from(workerNodes.values());
   
-  // Mark nodes as offline if no heartbeat for 90 seconds
   const now = Date.now();
   for (const node of nodes) {
     const lastBeat = new Date(node.lastHeartbeat).getTime();
@@ -256,7 +607,6 @@ app.get('/api/nodes', (req, res) => {
 
 app.delete('/api/nodes/:nodeId', (req, res) => {
   const { nodeId } = req.params;
-  const node = workerNodes.get(nodeId);
   workerNodes.delete(nodeId);
   console.log(`[Master] Worker node removed: ${nodeId}`);
   res.json({ success: true });
@@ -285,7 +635,6 @@ app.post('/api/nodes/:nodeId/task', async (req, res) => {
 });
 
 // ============= STEAM USER SESSIONS =============
-// Real Steam connections using steam-user library
 let SteamUser, SteamTotp;
 let steamAvailable = false;
 
@@ -302,7 +651,6 @@ try {
   console.error('[Server] Without these, accounts will NOT connect to Steam!');
 }
 
-// Map of accountId -> { client: SteamUser, status, steamId, ... }
 const steamSessions = new Map();
 
 // ============= HEALTH CHECK =============
@@ -313,6 +661,12 @@ app.get('/api/health', (req, res) => {
     proxyAvailable,
     activeSessions: steamSessions.size,
     workerNodes: workerNodes.size,
+    lootfarmPrices: {
+      cs2: lootfarmPrices.cs2.size,
+      dota: lootfarmPrices.dota.size,
+      tf2: lootfarmPrices.tf2.size,
+      rust: lootfarmPrices.rust.size,
+    },
     timestamp: new Date().toISOString(),
   });
 });
@@ -385,7 +739,6 @@ app.delete('/api/workers/:id', (req, res) => {
 // ============= ACCOUNTS =============
 app.get('/api/accounts', (req, res) => {
   const accounts = dbOps.getAllAccounts();
-  // Merge with REAL live session data
   const enriched = accounts.map(acc => {
     const session = steamSessions.get(acc.id);
     if (session) {
@@ -403,7 +756,6 @@ app.get('/api/accounts', (req, res) => {
         limited: session.limited ?? acc.limited,
       };
     }
-    // No active session = offline
     return { ...acc, status: 'offline' };
   });
   res.json({ accounts: enriched });
@@ -420,7 +772,6 @@ app.post('/api/accounts', (req, res) => {
 });
 
 app.delete('/api/accounts/:id', (req, res) => {
-  // Logout from Steam if connected
   const session = steamSessions.get(req.params.id);
   if (session && session.client) {
     try { session.client.logOff(); } catch {}
@@ -434,14 +785,12 @@ app.delete('/api/accounts/:id', (req, res) => {
 async function attemptSteamLogin(accountId, login, password, sharedSecret, identitySecret, useProxy = false) {
   const proxyUrl = useProxy ? globalProxy : null;
   
-  // Create SteamUser options
   const clientOptions = {
     promptSteamGuardCode: false,
     autoRelogin: true,
     enablePicsCache: false,
   };
   
-  // Add proxy if specified
   if (proxyUrl && proxyAvailable) {
     const agent = createProxyAgent(proxyUrl);
     if (agent) {
@@ -452,13 +801,11 @@ async function attemptSteamLogin(accountId, login, password, sharedSecret, ident
   
   const client = new SteamUser(clientOptions);
 
-  // Build login options
   const logOnOptions = {
     accountName: login,
     password: password,
   };
 
-  // If we have shared secret, generate 2FA code
   if (sharedSecret) {
     try {
       logOnOptions.twoFactorCode = SteamTotp.generateAuthCode(sharedSecret);
@@ -467,7 +814,6 @@ async function attemptSteamLogin(accountId, login, password, sharedSecret, ident
     }
   }
 
-  // Store session immediately as connecting
   steamSessions.set(accountId, {
     client,
     status: 'connecting',
@@ -614,7 +960,6 @@ async function attemptSteamLogin(accountId, login, password, sharedSecret, ident
       const friendSteamId = senderID.getSteamID64();
       console.log(`[Steam] 💬 ${login} got message from ${friendSteamId}: ${message}`);
       
-      // Получаем имя друга из кэша пользователей
       let friendName = friendSteamId;
       let friendAvatar = '👤';
       if (client.users && client.users[friendSteamId]) {
@@ -637,7 +982,6 @@ async function attemptSteamLogin(accountId, login, password, sharedSecret, ident
         isRead: false,
       };
       
-      // Сохраняем в базу данных (ВАЖНО!)
       try { 
         dbOps.saveMessage(msgData); 
         console.log(`[Steam] 💾 Message saved to DB: ${msgId}`);
@@ -646,7 +990,6 @@ async function attemptSteamLogin(accountId, login, password, sharedSecret, ident
       }
     });
 
-    // Actually log on
     try {
       client.logOn(logOnOptions);
     } catch (err) {
@@ -667,7 +1010,6 @@ app.post('/api/steam/login', async (req, res) => {
     });
   }
 
-  // If already logged in, return current status
   const existing = steamSessions.get(accountId);
   if (existing && existing.status === 'online') {
     return res.json({
@@ -685,7 +1027,6 @@ app.post('/api/steam/login', async (req, res) => {
     });
   }
 
-  // Set proxy if provided in request
   if (proxy) {
     const parsed = parseProxyString(proxy);
     if (parsed) {
@@ -694,11 +1035,9 @@ app.post('/api/steam/login', async (req, res) => {
     }
   }
 
-  // Try without proxy first
   console.log(`[Steam] 🔄 Attempting login for ${login} (direct)...`);
   let result = await attemptSteamLogin(accountId, login, password, sharedSecret, identitySecret, false);
   
-  // If rate limited and we have a proxy, retry with proxy
   if (!result.success && result.isRateLimit && globalProxy && proxyAvailable) {
     console.log(`[Steam] ⚠️ Rate limited! Retrying ${login} via proxy...`);
     result = await attemptSteamLogin(accountId, login, password, sharedSecret, identitySecret, true);
@@ -823,7 +1162,6 @@ app.post('/api/steam/message', (req, res) => {
     session.client.chatMessage(friendSteamId, message);
     console.log(`[Steam] 📤 ${session.login} -> ${friendSteamId}: ${message.substring(0, 50)}`);
     
-    // Сохраняем исходящее сообщение в БД
     const msgId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const msgData = {
       id: msgId,
@@ -858,13 +1196,10 @@ app.get('/api/steam/messages', (req, res) => {
   try {
     let messages;
     if (accountId && friendId) {
-      // Сообщения конкретного чата
-      messages = dbOps.getMessagesByChat(accountId, friendId, parseInt(limit) || 100);
+      messages = dbOps.getMessagesByChat ? dbOps.getMessagesByChat(accountId, friendId, parseInt(limit) || 100) : [];
     } else if (accountId) {
-      // Все сообщения аккаунта
-      messages = dbOps.getMessagesByAccount(accountId, parseInt(limit) || 200);
+      messages = dbOps.getMessagesByAccount ? dbOps.getMessagesByAccount(accountId, parseInt(limit) || 200) : [];
     } else {
-      // Все сообщения
       messages = dbOps.getMessages(parseInt(limit) || 500);
     }
     res.json({ messages });
@@ -878,8 +1213,8 @@ app.get('/api/steam/messages', (req, res) => {
 app.get('/api/steam/chats', (req, res) => {
   const { accountId } = req.query;
   try {
-    const chats = dbOps.getChats(accountId || null);
-    const unreadCount = dbOps.getUnreadCount(accountId || null);
+    const chats = dbOps.getChats ? dbOps.getChats(accountId || null) : [];
+    const unreadCount = dbOps.getUnreadCount ? dbOps.getUnreadCount(accountId || null) : 0;
     res.json({ chats, unreadCount });
   } catch (err) {
     console.error('[Chats] Error:', err.message);
@@ -894,7 +1229,9 @@ app.post('/api/steam/messages/read', (req, res) => {
     return res.json({ success: false, error: 'accountId and friendId required' });
   }
   try {
-    dbOps.markMessagesAsRead(accountId, friendId);
+    if (dbOps.markMessagesAsRead) {
+      dbOps.markMessagesAsRead(accountId, friendId);
+    }
     res.json({ success: true });
   } catch (err) {
     res.json({ success: false, error: err.message });
@@ -905,7 +1242,9 @@ app.post('/api/steam/messages/read', (req, res) => {
 app.delete('/api/steam/chat/:accountId/:friendId', (req, res) => {
   const { accountId, friendId } = req.params;
   try {
-    dbOps.deleteChat(accountId, friendId);
+    if (dbOps.deleteChat) {
+      dbOps.deleteChat(accountId, friendId);
+    }
     res.json({ success: true });
   } catch (err) {
     res.json({ success: false, error: err.message });
@@ -944,11 +1283,9 @@ app.post('/api/steam/add-friend', (req, res) => {
   }
 });
 
-// ============= INVENTORY PRICES =============
+// ============= LEGACY INVENTORY (csgotrader) =============
 const priceDb = new Map();
 let priceDbLoaded = false;
-let priceDbLastUpdate = 0;
-const PRICE_DB_TTL = 2 * 60 * 60 * 1000;
 
 const STEAM_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -962,7 +1299,6 @@ async function loadPriceDatabase() {
 
   try {
     if (existsSync(PRICES_FILE)) {
-      const { readFileSync } = await import('fs');
       const text = readFileSync(PRICES_FILE, 'utf-8');
       const data = JSON.parse(text);
       let count = 0;
@@ -972,7 +1308,6 @@ async function loadPriceDatabase() {
       }
       if (count > 0) {
         priceDbLoaded = true;
-        priceDbLastUpdate = Date.now();
         console.log(`[Prices] ✅ Loaded ${count} prices from local file: ${PRICES_FILE}`);
         return;
       }
@@ -1189,7 +1524,15 @@ app.get('/api/inventory-test/:steamId', async (req, res) => {
   html += `<div>Loaded: <b class="${priceDbLoaded ? 'ok' : 'err'}">${priceDbLoaded ? 'YES' : 'NO'}</b></div>`;
   html += `<div>Total items: <b>${priceDb.size}</b></div>`;
 
-  html += `<br><a href="/api/inventory/${steamId}" style="color:#66f">→ Full inventory JSON</a>`;
+  html += `<h3>3. Loot.Farm Cache</h3>`;
+  for (const [game, cache] of Object.entries(lootfarmPrices)) {
+    const meta = lootfarmMeta[game];
+    const age = meta.lastUpdate ? Math.round((Date.now() - meta.lastUpdate) / 60000) : null;
+    html += `<div>${game.toUpperCase()}: <b>${cache.size}</b> items (${age !== null ? `${age} мин назад` : 'не загружено'})</div>`;
+  }
+
+  html += `<br><a href="/api/inventory/${steamId}" style="color:#66f">→ Full inventory JSON (csgotrader)</a>`;
+  html += `<br><a href="/api/inventory/evaluate/${steamId}?game=cs2" style="color:#6f6">→ Inventory via Loot.Farm</a>`;
   html += `</body></html>`;
   res.send(html);
 });
@@ -1244,6 +1587,12 @@ app.get('/api/stats', (req, res) => {
     onlineAccounts: Array.from(steamSessions.values()).filter(s => s.status === 'online').length,
     workerNodes: workerNodes.size,
     onlineNodes: Array.from(workerNodes.values()).filter(n => n.status === 'online').length,
+    lootfarmPrices: {
+      cs2: lootfarmPrices.cs2.size,
+      dota: lootfarmPrices.dota.size,
+      tf2: lootfarmPrices.tf2.size,
+      rust: lootfarmPrices.rust.size,
+    },
   });
 });
 
@@ -1269,7 +1618,7 @@ try {
 const distPath = join(__dirname, 'dist');
 if (existsSync(distPath)) {
   app.use(express.static(distPath));
-  app.get('/{*path}', (req, res) => {
+  app.get('*', (req, res) => {
     res.sendFile(join(distPath, 'index.html'));
   });
   console.log(`[Server] Serving static files from ${distPath}`);
@@ -1279,12 +1628,13 @@ if (existsSync(distPath)) {
 app.listen(PORT, () => {
   console.log('');
   console.log('╔══════════════════════════════════════════════════════════╗');
-  console.log('║           SukaCombine Steam Panel v3.2                   ║');
+  console.log('║           SukaCombine Steam Panel v3.3                   ║');
   console.log('╠══════════════════════════════════════════════════════════╣');
   console.log(`║  🌐 URL: http://localhost:${PORT}                            ║`);
   console.log(`║  🔑 Admin: admin / admin123                              ║`);
   console.log(`║  🎮 Steam: ${steamAvailable ? '✅ REAL connections' : '❌ NOT available'}                      ║`);
   console.log(`║  🌐 Proxy: ${proxyAvailable ? '✅ Available' : '❌ npm install https-proxy-agent'}              ║`);
+  console.log(`║  💰 Loot.Farm: CS2=${lootfarmPrices.cs2.size} DOTA=${lootfarmPrices.dota.size} TF2=${lootfarmPrices.tf2.size} RUST=${lootfarmPrices.rust.size}  ║`);
   console.log(`║  🖥️  Nodes: Worker nodes API enabled                      ║`);
   console.log('╚══════════════════════════════════════════════════════════╝');
   console.log('');

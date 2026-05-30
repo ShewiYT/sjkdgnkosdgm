@@ -21,10 +21,8 @@ export default function AccountManager({ accounts, selectedAccount }: AccountMan
   const [result, setResult] = useState('');
 
   const handleApply = async () => {
-    setApplying(true);
-    setResult('');
-    let success = 0;
-    let errors = 0;
+    setApplying(true); setResult('');
+    let success = 0; let errors = 0;
     for (const acc of targetAccounts) {
       const data: Record<string, string> = {};
       if (applyName && newName) data.name = newName;
@@ -32,10 +30,7 @@ export default function AccountManager({ accounts, selectedAccount }: AccountMan
       if (applyCountry && newCountry) data.country = newCountry;
       if (applyBio) data.bio = newBio;
       if (Object.keys(data).length === 0) continue;
-      try {
-        const res = await steamApi.updateProfile(acc.id, data);
-        if (res.success) success++; else errors++;
-      } catch { errors++; }
+      try { const res = await steamApi.updateProfile(acc.id, data); if (res.success) success++; else errors++; } catch { errors++; }
       await new Promise(r => setTimeout(r, 1000));
     }
     setResult(`Готово: ${success} успешно, ${errors} ошибок`);
